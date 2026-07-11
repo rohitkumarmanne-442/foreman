@@ -20,6 +20,7 @@ const HELP = `
     foreman trust <srv>          accept an MCP server's current tools as the new baseline
     foreman verify               re-verify every signed MCP receipt
     foreman status               one-screen summary in the terminal
+    foreman demo [--clear]       seed (or remove) showcase data to explore the inbox
     foreman hook <agent>         (internal) hook entry point, reads stdin
 
   DATA
@@ -99,6 +100,21 @@ async function main(): Promise<void> {
     }
     console.log(`Receipts: ${calls.length} total — ${ok} valid, ${bad} broken`);
     if (bad > 0) process.exit(2);
+    return;
+  }
+
+  if (cmd === "demo") {
+    const { seedDemo, clearDemo } = await import("./demo.js");
+    process.argv.includes("--clear") ? clearDemo() : seedDemo();
+    return;
+  }
+
+  if (cmd === "version" || cmd === "--version" || cmd === "-v") {
+    const { readFileSync } = await import("node:fs");
+    const pkg = JSON.parse(
+      readFileSync(new URL("../package.json", import.meta.url), "utf8")
+    );
+    console.log(pkg.version);
     return;
   }
 

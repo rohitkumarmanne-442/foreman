@@ -24,10 +24,14 @@ Every agent session becomes a **review card**, ranked by risk — so you spend t
 
 Each card shows:
 
-- **Files touched** — with before → after line counts. A 200-line file rewritten to 20 lines glows red.
+- **Files touched** — with before → after line counts and a **click-to-expand diff** for every change. A 200-line file rewritten to 20 lines glows red.
 - **Commands run** — with pass/fail, and which of them actually *verify* anything (tests, builds, lint, a curl against localhost).
 - **Claims vs evidence** — the agent said *"all tests pass, everything works"*. Did it run a single test? If not: **⚠️ UNVERIFIED**. No agent vendor will build this badge against themselves.
 - **Findings** — destructive commands (`rm -rf`, force push, `DROP TABLE`, `DELETE` without `WHERE`), mass rewrites, secrets written into code, sensitive paths (auth, migrations, `.env`, CI workflows) touched.
+
+Work the inbox like email: **✓ Approve** sinks a card, **⚑ Flag** pins it. The "Needs review" filter is your queue; inbox zero means every agent change had human eyes on it.
+
+Want to see it populated before wiring up an agent? `foreman demo` seeds three showcase sessions (including a replica of the 869→97 incident); `foreman demo --clear` removes them.
 
 ### Risk rules (v0.1)
 
@@ -69,6 +73,7 @@ The proxy passes every byte through untouched. Your agent and server never know 
 foreman init [--global]    install Claude Code hooks (this repo, or all repos)
 foreman ui [--port 4517]   open the review inbox
 foreman status             one-screen summary in the terminal
+foreman demo [--clear]     seed (or remove) showcase data
 foreman wrap --name <s> -- <cmd…>   attest an MCP server
 foreman trust <s>          re-baseline an MCP server's tools
 foreman verify             re-verify every signed receipt
@@ -76,9 +81,10 @@ foreman verify             re-verify every signed receipt
 
 ## Roadmap
 
+- [x] Approve / flag actions on cards
+- [x] Diff view per file touch
 - [ ] Adapters: Cursor, Copilot CLI, Codex, Gemini CLI, OpenCode
-- [ ] Approve / request-changes actions on cards (feed decisions back to the agent)
-- [ ] Diff view per file touch
+- [ ] Feed review decisions back to the agent (flag → the agent sees why)
 - [ ] Receipt chains (hash-linked journal → tamper-evident history, not just tamper-evident entries)
 - [ ] Team mode: share cards for the changes your teammates' agents made
 

@@ -20,6 +20,7 @@ export interface PreToolData {
   file?: string;
   exists?: boolean;
   lines?: number;
+  content_sample?: string; // bounded snapshot of the file before a Write
 }
 
 export interface ToolData {
@@ -29,6 +30,8 @@ export interface ToolData {
   lines_after?: number;
   command?: string;
   description?: string;
+  content_sample?: string;
+  edits?: Array<{ old: string; new: string }>; // Edit / MultiEdit pairs, bounded
 }
 
 export interface SessionEndData {
@@ -72,6 +75,9 @@ export interface FileTouch {
   action: "write" | "edit";
   lines_before?: number;
   lines_after?: number;
+  edits?: Array<{ old: string; new: string }>; // surgical changes, in order
+  before_sample?: string; // full-file rewrite: content before
+  after_sample?: string; // full-file rewrite: content after
 }
 
 export interface CommandRun {
@@ -80,8 +86,11 @@ export interface CommandRun {
   verification: boolean; // looks like a test/build/run command
 }
 
+export type ReviewStatus = "pending" | "approved" | "flagged";
+
 export interface ReviewCard {
   session: string;
+  review: ReviewStatus;
   agent: string;
   cwd: string;
   started: string;

@@ -97,6 +97,63 @@ test("receipt sign + verify roundtrip, tamper breaks it", async () => {
   assert.equal(verifyReceipt({ ...body, result_hash: "c".repeat(64) }, sig, pk), false);
 });
 
+test("edit diffs are captured on the card", async () => {
+  const session = "test-session-3";
+  await runHook({
+    session_id: session, cwd: TMP, hook_event_name: "PostToolUse",
+    tool_name: "Edit",
+    tool_input: { file_path: "src/a.ts", old_string: "const x = 1;", new_string: "const x = 2;" },
+    tool_response: {},
+  });
+  const { buildCards } = await import("../cards.js");
+  const card = buildCards().find((c) => c.session === session)!;
+  assert.equal(card.files.length, 1);
+  assert.deepEqual(card.files[0].edits, [{ old: "const x = 1;", new: "const x = 2;" }]);
+});
+
+test("write captures before/after samples for the diff view", async () => {
+  const session = "test-session-1"; // reuses the mass-rewrite session from test 1
+  const { buildCards } = await import("../cards.js");
+  const card = buildCards().find((c) => c.session === session)!;
+  const f = card.files[0];
+  assert.ok(f.before_sample && f.before_sample.includes("line 0"), "before image kept");
+  assert.ok(f.after_sample && f.after_sample.startsWith("x"), "after image kept");
+});
+
+test("review store: approve, flag, reset", async () => {
+  const { setReview, loadReviews } = await import("../reviews.js");
+  const { buildCards } = await import("../cards.js");
+  setReview("test-session-2", "approved");
+  assert.equal(loadReviews()["test-session-2"].status, "approved");
+  let card = buildCards().find((c) => c.session === "test-session-2")!;
+  assert.equal(card.review, "approved");
+  // approved cards sort after pending ones
+  const cards = buildCards();
+  const lastPendingIdx = cards.map((c) => c.review).lastIndexOf("pending");
+  const approvedIdx = cards.findIndex((c) => c.session === "test-session-2");
+  assert.ok(approvedIdx > lastPendingIdx, "approved sinks below pending");
+  setReview("test-session-2", "pending");
+  assert.equal(loadReviews()["test-session-2"], undefined);
+});
+
+test("demo seed and clear", async () => {
+  const { seedDemo, clearDemo } = await import("../demo.js");
+  const { buildCards } = await import("../cards.js");
+  const { readEvents } = await import("../journal.js");
+  seedDemo();
+  const cards = buildCards();
+  const incident = cards.find((c) => c.session === "demo-incident");
+  assert.ok(incident, "demo incident card exists");
+  assert.equal(incident!.level, "critical");
+  assert.ok(incident!.findings.some((f) => f.rule === "mass_rewrite"));
+  const secretCard = cards.find((c) => c.session === "demo-auth-change");
+  assert.ok(secretCard!.findings.some((f) => f.rule === "secret_in_code"), "demo secret detected");
+  assert.ok(readEvents().some((e) => e.kind === "mcp_call" && e.session === "demo-mcp-run"));
+  clearDemo();
+  assert.equal(readEvents().some((e) => String(e.session).startsWith("demo-")), false, "demo events removed");
+  assert.ok(readEvents().some((e) => e.session === "test-session-1"), "real events survive clear");
+});
+
 test("mcp proxy: receipts + rug-pull drift", async () => {
   const fakeServer = path.join(TMP, "fake-mcp.mjs");
   fs.writeFileSync(fakeServer, `

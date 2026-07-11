@@ -9,6 +9,7 @@
     --bg:#0b0e14; --panel:#11151f; --panel2:#161b28; --line:#232a3b;
     --text:#e6eaf2; --dim:#8b93a7; --mono:ui-monospace,'Cascadia Code',Consolas,monospace;
     --critical:#ff4d5e; --high:#ff9f43; --medium:#ffd166; --low:#3ddc97; --accent:#5b8cff;
+    --add:#1d3a2a; --add-t:#7ee2a8; --del:#3a1d24; --del-t:#ff9daa;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   body{background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,'Segoe UI',Roboto,sans-serif;height:100vh;display:flex;flex-direction:column;overflow:hidden}
@@ -21,26 +22,39 @@
   .tab.active{color:var(--text);background:var(--panel2);border-color:var(--line)}
   .tab .n{font-family:var(--mono);font-size:11px;color:var(--accent);margin-left:6px}
   main{flex:1;display:flex;min-height:0}
-  #list{width:400px;min-width:320px;border-right:1px solid var(--line);overflow-y:auto;background:var(--panel)}
+  #listwrap{width:400px;min-width:320px;border-right:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column}
+  .filters{display:flex;gap:6px;padding:10px 14px;border-bottom:1px solid var(--line)}
+  .chip{font-size:12px;padding:4px 12px;border-radius:99px;border:1px solid var(--line);color:var(--dim);cursor:pointer}
+  .chip.active{color:var(--text);border-color:var(--accent);background:rgba(91,140,255,.1)}
+  #list{flex:1;overflow-y:auto}
   .card{padding:14px 18px;border-bottom:1px solid var(--line);cursor:pointer;display:flex;flex-direction:column;gap:6px}
   .card:hover{background:var(--panel2)}
   .card.sel{background:var(--panel2);box-shadow:inset 3px 0 0 var(--accent)}
+  .card.approved{opacity:.5}
   .row{display:flex;align-items:center;gap:8px}
   .badge{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.08em;padding:2px 8px;border-radius:99px;text-transform:uppercase}
   .b-critical{background:rgba(255,77,94,.15);color:var(--critical)}
   .b-high{background:rgba(255,159,67,.15);color:var(--high)}
   .b-medium{background:rgba(255,209,102,.13);color:var(--medium)}
   .b-low{background:rgba(61,220,151,.13);color:var(--low)}
+  .rv{font-size:11px}
+  .rv.approved{color:var(--low)} .rv.flagged{color:var(--critical)}
   .repo{font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .meta{color:var(--dim);font-size:12px;display:flex;gap:10px;flex-wrap:wrap}
   .meta b{color:var(--text);font-weight:600}
-  .open-dot{width:7px;height:7px;border-radius:99px;background:var(--accent);animation:pulse 1.6s infinite}
+  .open-dot{width:7px;height:7px;border-radius:99px;background:var(--accent);animation:pulse 1.6s infinite;flex-shrink:0}
   @keyframes pulse{50%{opacity:.3}}
   #detail{flex:1;overflow-y:auto;padding:26px 34px}
   .empty{color:var(--dim);display:flex;height:100%;align-items:center;justify-content:center;flex-direction:column;gap:10px;text-align:center}
   .empty .big{font-size:38px}
   h2{font-size:17px;margin-bottom:4px}
-  .sub{color:var(--dim);font-size:12px;font-family:var(--mono);margin-bottom:20px}
+  .sub{color:var(--dim);font-size:12px;font-family:var(--mono);margin-bottom:16px}
+  .actions{display:flex;gap:8px;margin-bottom:20px}
+  .btn{padding:7px 16px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--text);font-size:13px;cursor:pointer;font-weight:600}
+  .btn:hover{background:var(--panel2)}
+  .btn.approve{border-color:rgba(61,220,151,.4);color:var(--low)}
+  .btn.flag{border-color:rgba(255,77,94,.4);color:var(--critical)}
+  .btn.active{background:var(--panel2);box-shadow:0 0 0 1px currentColor inset}
   .score{display:flex;align-items:center;gap:18px;margin-bottom:24px;padding:18px;background:var(--panel);border:1px solid var(--line);border-radius:14px}
   .ring{width:74px;height:74px;border-radius:50%;display:flex;align-items:center;justify-content:center;font:700 20px var(--mono);flex-shrink:0}
   .score .lbl{font-size:12px;color:var(--dim)}
@@ -53,7 +67,6 @@
   .finding.s2{border-left-color:var(--medium)}
   .finding .rule{font-family:var(--mono);font-size:11px;color:var(--dim);white-space:nowrap;padding-top:1px}
   .claim{padding:10px 14px;border-radius:8px;margin-bottom:8px;font-size:13px;background:var(--panel);border:1px solid var(--line);display:flex;gap:10px;align-items:baseline}
-  .claim .ic{font-size:13px}
   table{width:100%;border-collapse:collapse;font-size:13px;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
   th{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);text-align:left;padding:9px 14px;border-bottom:1px solid var(--line);font-weight:600}
   td{padding:9px 14px;border-bottom:1px solid var(--line);vertical-align:top}
@@ -64,6 +77,17 @@
   .vbadge{font-size:10px;font-family:var(--mono);border:1px solid var(--line);border-radius:5px;padding:1px 6px;color:var(--dim)}
   .vbadge.verify{color:var(--accent);border-color:rgba(91,140,255,.4)}
   .msg{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;font-size:13px;color:var(--dim);white-space:pre-wrap;max-height:220px;overflow-y:auto}
+  .filelink{cursor:pointer;color:var(--accent);text-decoration:none}
+  .filelink:hover{text-decoration:underline}
+  .diff{display:none}
+  .diff.show{display:table-row}
+  .diff td{background:#0d1119;padding:12px 14px}
+  .dblock{font-family:var(--mono);font-size:12px;border-radius:8px;overflow-x:auto;margin-bottom:8px}
+  .dline{padding:1px 10px;white-space:pre}
+  .dline.add{background:var(--add);color:var(--add-t)}
+  .dline.del{background:var(--del);color:var(--del-t)}
+  .dline.ctx{color:var(--dim)}
+  .dlabel{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin:6px 0 4px}
   #receipts{flex:1;overflow-y:auto;padding:26px 34px;display:none}
   .sig-ok{color:var(--low);font-family:var(--mono);font-size:11px}
   .sig-bad{color:var(--critical);font-family:var(--mono);font-size:11px}
@@ -84,7 +108,13 @@
   </div>
 </header>
 <main>
-  <div id="list"></div>
+  <div id="listwrap">
+    <div class="filters">
+      <div class="chip active" id="f-review" onclick="setFilter('review')">Needs review</div>
+      <div class="chip" id="f-all" onclick="setFilter('all')">All</div>
+    </div>
+    <div id="list"></div>
+  </div>
   <div id="detail"><div class="empty"><div class="big">🧑‍🏭</div><div>No session selected.<br>Agent sessions appear here as risk-ranked review cards.</div></div></div>
   <div id="receipts"></div>
 </main>
@@ -92,7 +122,8 @@
   <span id="status">connecting…</span><span>auto-refresh 3s</span><span>127.0.0.1 only — your data never leaves this machine</span>
 </footer>
 <script>
-let cards=[],receipts=[],selected=null,tab='inbox';
+let cards=[],receipts=[],selected=null,tab='inbox',filter='review';
+const openDiffs=new Set();
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const base=p=>{const parts=String(p||'').split(/[\\/]/).filter(Boolean);return parts[parts.length-1]||p;}
@@ -102,19 +133,28 @@ const lvlColor={critical:'var(--critical)',high:'var(--high)',medium:'var(--medi
 function showTab(t){tab=t;
   $('tab-inbox').classList.toggle('active',t==='inbox');
   $('tab-receipts').classList.toggle('active',t==='receipts');
-  $('list').style.display=t==='inbox'?'block':'none';
+  $('listwrap').style.display=t==='inbox'?'flex':'none';
   $('detail').style.display=t==='inbox'?'block':'none';
   $('receipts').style.display=t==='receipts'?'block':'none';
 }
+function setFilter(f){filter=f;
+  $('f-review').classList.toggle('active',f==='review');
+  $('f-all').classList.toggle('active',f==='all');
+  renderList();
+}
+const visible=()=>filter==='review'?cards.filter(c=>c.review!=='approved'):cards;
 
 function renderList(){
-  $('n-inbox').textContent=cards.length;
-  $('list').innerHTML=cards.map(c=>`
-    <div class="card ${selected===c.session?'sel':''}" onclick="select('${esc(c.session)}')">
+  const v=visible();
+  $('n-inbox').textContent=cards.filter(c=>c.review!=='approved').length;
+  $('list').innerHTML=v.map(c=>`
+    <div class="card ${selected===c.session?'sel':''} ${c.review}" onclick="select('${esc(c.session)}')">
       <div class="row">
         <span class="badge b-${c.level}">${c.level} ${c.score}</span>
         <span class="repo">${esc(base(c.cwd))}</span>
         ${c.open?'<span class="open-dot" title="session still running"></span>':''}
+        ${c.review==='approved'?'<span class="rv approved">✓ approved</span>':''}
+        ${c.review==='flagged'?'<span class="rv flagged">⚑ flagged</span>':''}
         <span class="dim" style="margin-left:auto;font-size:11px">${ago(c.started)}</span>
       </div>
       <div class="meta">
@@ -123,10 +163,70 @@ function renderList(){
         <span><b>${c.findings.length}</b> findings</span>
         ${c.claims.length?`<span>${c.verified_claims?'✅ claims verified':'⚠️ unverified claims'}</span>`:''}
       </div>
-    </div>`).join('')||'<div class="empty" style="height:200px"><div>No sessions yet.<br>Run <span class="mono">foreman init</span> in a repo, then use your agent.</div></div>';
+    </div>`).join('')||'<div class="empty" style="height:200px;padding:0 20px"><div>'+(filter==='review'?'Inbox zero — nothing needs review. 🧑‍🏭':'No sessions yet.<br>Run <span class="mono">foreman init</span> in a repo, then use your agent.<br>Or seed examples: <span class="mono">foreman demo</span>')+'</div></div>';
 }
 
-function select(id){selected=id;renderList();renderDetail();}
+function select(id){selected=id;openDiffs.clear();renderList();renderDetail();}
+
+async function review(session,status){
+  await fetch('/api/review',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({session,status})});
+  await refresh();
+}
+
+function toggleDiff(i){
+  openDiffs.has(i)?openDiffs.delete(i):openDiffs.add(i);
+  const row=$('diff-'+i);if(row)row.classList.toggle('show');
+}
+
+// Minimal LCS line diff for full-file rewrites (bounded inputs)
+function lineDiff(a,b){
+  const A=a.split('\n'),B=b.split('\n');
+  if(A.length*B.length>250000)return null; // too big — caller falls back
+  const m=A.length,n=B.length;
+  const dp=Array.from({length:m+1},()=>new Uint16Array(n+1));
+  for(let i=m-1;i>=0;i--)for(let j=n-1;j>=0;j--)
+    dp[i][j]=A[i]===B[j]?dp[i+1][j+1]+1:Math.max(dp[i+1][j],dp[i][j+1]);
+  const out=[];let i=0,j=0;
+  while(i<m&&j<n){
+    if(A[i]===B[j]){out.push(['ctx',A[i]]);i++;j++;}
+    else if(dp[i+1][j]>=dp[i][j+1])out.push(['del',A[i++]]);
+    else out.push(['add',B[j++]]);
+  }
+  while(i<m)out.push(['del',A[i++]]);
+  while(j<n)out.push(['add',B[j++]]);
+  // collapse long context runs
+  const res=[];let run=[];
+  for(const r of out){
+    if(r[0]==='ctx'){run.push(r);}
+    else{
+      if(run.length>6){res.push(...run.slice(0,2),['skip','… '+(run.length-4)+' unchanged lines …'],...run.slice(-2));}
+      else res.push(...run);
+      run=[];res.push(r);
+    }
+  }
+  if(run.length>6){res.push(...run.slice(0,2),['skip','… '+(run.length-4)+' unchanged lines …'],...run.slice(-2));}
+  else res.push(...run);
+  return res;
+}
+
+function renderFileDiff(f){
+  if(f.edits&&f.edits.length){
+    return f.edits.map((e,k)=>`
+      <div class="dlabel">change ${k+1} of ${f.edits.length}</div>
+      <div class="dblock">
+        ${e.old?e.old.split('\n').map(l=>`<div class="dline del">- ${esc(l)}</div>`).join(''):''}
+        ${e.new?e.new.split('\n').map(l=>`<div class="dline add">+ ${esc(l)}</div>`).join(''):''}
+      </div>`).join('');
+  }
+  if(f.before_sample!==undefined&&f.after_sample!==undefined){
+    const d=lineDiff(f.before_sample,f.after_sample);
+    if(d)return `<div class="dblock">${d.map(([t,l])=>t==='skip'?`<div class="dline ctx">${esc(l)}</div>`:`<div class="dline ${t}">${t==='add'?'+':t==='del'?'-':' '} ${esc(l)}</div>`).join('')}</div>`;
+    return `<div class="dlabel">before</div><div class="dblock">${f.before_sample.split('\n').slice(0,40).map(l=>`<div class="dline del">- ${esc(l)}</div>`).join('')}</div>
+            <div class="dlabel">after</div><div class="dblock">${f.after_sample.split('\n').slice(0,40).map(l=>`<div class="dline add">+ ${esc(l)}</div>`).join('')}</div>`;
+  }
+  if(f.after_sample!==undefined)return `<div class="dlabel">new file</div><div class="dblock">${f.after_sample.split('\n').slice(0,60).map(l=>`<div class="dline add">+ ${esc(l)}</div>`).join('')}</div>`;
+  return '<div class="dim">No content captured for this change.</div>';
+}
 
 function renderDetail(){
   const c=cards.find(x=>x.session===selected);
@@ -134,7 +234,11 @@ function renderDetail(){
   const col=lvlColor[c.level];
   $('detail').innerHTML=`
     <h2>${esc(base(c.cwd))} <span class="dim" style="font-weight:400">· ${esc(c.agent)}</span></h2>
-    <div class="sub">${esc(c.cwd)} · session ${esc(c.session.slice(0,8))} · ${new Date(c.started).toLocaleString()}${c.open?' · <span style="color:var(--accent)">RUNNING</span>':''}</div>
+    <div class="sub">${esc(c.cwd)} · session ${esc(c.session.slice(0,12))} · ${new Date(c.started).toLocaleString()}${c.open?' · <span style="color:var(--accent)">RUNNING</span>':''}</div>
+    <div class="actions">
+      <button class="btn approve ${c.review==='approved'?'active':''}" onclick="review('${esc(c.session)}','${c.review==='approved'?'pending':'approved'}')">✓ ${c.review==='approved'?'Approved':'Approve'}</button>
+      <button class="btn flag ${c.review==='flagged'?'active':''}" onclick="review('${esc(c.session)}','${c.review==='flagged'?'pending':'flagged'}')">⚑ ${c.review==='flagged'?'Flagged':'Flag'}</button>
+    </div>
     <div class="score">
       <div class="ring" style="background:conic-gradient(${col} ${c.score*3.6}deg,var(--line) 0);"><div style="width:58px;height:58px;border-radius:50%;background:var(--panel);display:flex;align-items:center;justify-content:center">${c.score}</div></div>
       <div>
@@ -143,11 +247,12 @@ function renderDetail(){
       </div>
     </div>
     ${c.findings.length?`<section><h3>Findings</h3>${c.findings.map(f=>`<div class="finding s${f.severity}"><span class="rule">${esc(f.rule)}</span><span>${esc(f.detail)}</span></div>`).join('')}</section>`:''}
-    ${c.claims.length?`<section><h3>Claims vs Evidence</h3>${c.claims.map(cl=>`<div class="claim"><span class="ic">${c.verified_claims?'✅':'❓'}</span><span>“${esc(cl)}”</span></div>`).join('')}
+    ${c.claims.length?`<section><h3>Claims vs Evidence</h3>${c.claims.map(cl=>`<div class="claim"><span>${c.verified_claims?'✅':'❓'}</span><span>“${esc(cl)}”</span></div>`).join('')}
       <div class="dim" style="font-size:12px;margin-top:4px">${c.verified_claims?'Backed by at least one passing verification command.':'No passing verification command found in this session.'}</div></section>`:''}
-    ${c.files.length?`<section><h3>Files touched (${c.files.length})</h3><table><tr><th>File</th><th>Action</th><th>Lines</th></tr>
-      ${c.files.map(f=>{const cut=f.action==='write'&&f.lines_before>=50&&f.lines_after<f.lines_before*0.4;
-        return `<tr><td class="mono">${esc(f.path)}</td><td>${f.action}</td><td class="mono ${cut?'lines-cut':''}">${f.lines_before??'—'} → ${f.lines_after??'—'}${cut?' ⚠':''}</td></tr>`}).join('')}</table></section>`:''}
+    ${c.files.length?`<section><h3>Files touched (${c.files.length}) — click a file to see the diff</h3><table><tr><th>File</th><th>Action</th><th>Lines</th></tr>
+      ${c.files.map((f,i)=>{const cut=f.action==='write'&&f.lines_before>=50&&f.lines_after<f.lines_before*0.4;
+        return `<tr><td><a class="filelink mono" onclick="toggleDiff(${i})">${esc(f.path)}</a></td><td>${f.action}</td><td class="mono ${cut?'lines-cut':''}">${f.lines_before??'—'} → ${f.lines_after??'—'}${cut?' ⚠':''}</td></tr>
+        <tr class="diff ${openDiffs.has(i)?'show':''}" id="diff-${i}"><td colspan="3">${renderFileDiff(f)}</td></tr>`}).join('')}</table></section>`:''}
     ${c.commands.length?`<section><h3>Commands run (${c.commands.length})</h3><table><tr><th></th><th>Command</th><th></th></tr>
       ${c.commands.map(k=>`<tr><td>${k.ok?'<span class="ok">✓</span>':'<span class="fail">✗</span>'}</td><td class="mono">${esc(k.command.slice(0,180))}</td><td>${k.verification?'<span class="vbadge verify">VERIFY</span>':''}</td></tr>`).join('')}</table></section>`:''}
     ${c.last_message?`<section><h3>Agent's final word</h3><div class="msg">${esc(c.last_message)}</div></section>`:''}
@@ -175,7 +280,7 @@ async function refresh(){
   try{
     const[c,r]=await Promise.all([fetch('/api/cards').then(x=>x.json()),fetch('/api/receipts').then(x=>x.json())]);
     cards=c;receipts=r;
-    if(!selected&&cards.length)selected=cards[0].session;
+    if(!selected&&visible().length)selected=visible()[0].session;
     renderList();renderDetail();renderReceipts();
     $('status').textContent='● live';$('status').style.color='var(--low)';
   }catch(e){$('status').textContent='● disconnected';$('status').style.color='var(--critical)';}

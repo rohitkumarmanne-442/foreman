@@ -15,6 +15,9 @@ interface HookPayload {
   tool_response?: unknown;
 }
 
+const SAMPLE_MAX = 20000; // bounded full-file samples (before/after a Write)
+const EDIT_MAX = 4000; // bounded per-edit old/new strings
+
 function countLines(text: string): number {
   if (!text) return 0;
   return text.split("\n").length;
@@ -72,15 +75,18 @@ export async function handleClaudeCodeHook(): Promise<void> {
     const tool = p.tool_name || "";
     const input = p.tool_input || {};
 
-    if (event === "PreToolUse" && (tool === "Write" || tool === "Edit")) {
+    if (event === "PreToolUse" && (tool === "Write" || tool === "Edit" || tool === "MultiEdit")) {
       const file = String(input.file_path || "");
       let exists = false;
       let lines = 0;
+      let content_sample = "";
       if (file) {
         try {
           const content = fs.readFileSync(file, "utf8");
           exists = true;
           lines = countLines(content);
+          // keep the before-image so the inbox can render a real diff
+          if (tool === "Write") content_sample = content.slice(0, SAMPLE_MAX);
         } catch {
           exists = false;
         }
@@ -90,7 +96,7 @@ export async function handleClaudeCodeHook(): Promise<void> {
         session,
         cwd,
         kind: "pre_tool",
-        data: { tool, file, exists, lines },
+        data: { tool, file, exists, lines, ...(content_sample ? { content_sample } : {}) },
       });
     } else if (event === "PostToolUse") {
       const ok = !responseLooksFailed(p.tool_response);
@@ -98,11 +104,25 @@ export async function handleClaudeCodeHook(): Promise<void> {
       if (tool === "Write") {
         data.file = String(input.file_path || "");
         data.lines_after = countLines(String(input.content ?? ""));
-        // keep a bounded sample of written content for secret scanning
-        data.content_sample = String(input.content ?? "").slice(0, 20000);
+        // bounded sample of written content — secret scanning + diff view
+        data.content_sample = String(input.content ?? "").slice(0, SAMPLE_MAX);
       } else if (tool === "Edit") {
         data.file = String(input.file_path || "");
-        data.content_sample = String(input.new_string ?? "").slice(0, 20000);
+        data.content_sample = String(input.new_string ?? "").slice(0, SAMPLE_MAX);
+        data.edits = [
+          {
+            old: String(input.old_string ?? "").slice(0, EDIT_MAX),
+            new: String(input.new_string ?? "").slice(0, EDIT_MAX),
+          },
+        ];
+      } else if (tool === "MultiEdit") {
+        data.file = String(input.file_path || "");
+        const edits = Array.isArray(input.edits) ? input.edits : [];
+        data.edits = edits.slice(0, 20).map((e: any) => ({
+          old: String(e?.old_string ?? "").slice(0, EDIT_MAX),
+          new: String(e?.new_string ?? "").slice(0, EDIT_MAX),
+        }));
+        data.content_sample = (data.edits as Array<{ new: string }>).map((e) => e.new).join("\n");
       } else if (tool === "Bash" || tool === "PowerShell") {
         data.command = String(input.command ?? "").slice(0, 2000);
         data.description = String(input.description ?? "").slice(0, 300);
@@ -148,7 +168,7 @@ export function installClaudeCodeHooks(opts: { global: boolean }): string {
   settings.hooks = settings.hooks || {};
 
   const entries: Array<[string, string]> = [
-    ["PreToolUse", "Write|Edit"],
+    ["PreToolUse", "Write|Edit|MultiEdit"],
     ["PostToolUse", "*"],
     ["Stop", "*"],
   ];

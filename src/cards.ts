@@ -1,6 +1,7 @@
 import { readEvents } from "./journal.js";
 import { assessRisk } from "./risk.js";
 import { isVerificationCommand } from "./claims.js";
+import { loadReviews } from "./reviews.js";
 import type {
   ForemanEvent,
   ReviewCard,
@@ -30,12 +31,17 @@ export function buildCards(events?: ForemanEvent[]): ReviewCard[] {
     const first = list[0];
     const end = [...list].reverse().find((e) => e.kind === "session_end");
 
-    // pre_tool snapshots give us lines_before for Write events
+    // pre_tool snapshots give us lines_before + the before-image for Writes
     const preLines = new Map<string, number>();
+    const preContent = new Map<string, string>();
     for (const e of list) {
       if (e.kind !== "pre_tool") continue;
       const d = e.data as unknown as PreToolData;
-      if (d.file && d.exists) preLines.set(d.file, d.lines ?? 0);
+      if (d.file && d.exists) {
+        preLines.set(d.file, d.lines ?? 0);
+        // keep the FIRST before-image — that's the state the human last saw
+        if (d.content_sample && !preContent.has(d.file)) preContent.set(d.file, d.content_sample);
+      }
     }
 
     const filesMap = new Map<string, FileTouch>();
@@ -45,7 +51,7 @@ export function buildCards(events?: ForemanEvent[]): ReviewCard[] {
     for (const e of list) {
       if (e.kind !== "tool") continue;
       const d = e.data as unknown as ToolData & { content_sample?: string };
-      if (d.tool === "Write" || d.tool === "Edit") {
+      if (d.tool === "Write" || d.tool === "Edit" || d.tool === "MultiEdit") {
         const path = d.file || "";
         if (!path) continue;
         const existing = filesMap.get(path);
@@ -58,6 +64,10 @@ export function buildCards(events?: ForemanEvent[]): ReviewCard[] {
           touch.action = "write";
           touch.lines_after = d.lines_after;
           if (touch.lines_before === undefined) touch.lines_before = preLines.get(path);
+          touch.before_sample = preContent.get(path);
+          touch.after_sample = d.content_sample;
+        } else if (d.edits?.length) {
+          touch.edits = [...(touch.edits ?? []), ...d.edits];
         }
         filesMap.set(path, touch);
         if (d.content_sample) contentSamples.push({ file: path, sample: d.content_sample });
@@ -86,6 +96,7 @@ export function buildCards(events?: ForemanEvent[]): ReviewCard[] {
 
     cards.push({
       session,
+      review: "pending",
       agent: first.agent,
       cwd: first.cwd,
       started: first.ts,
@@ -104,10 +115,17 @@ export function buildCards(events?: ForemanEvent[]): ReviewCard[] {
     });
   }
 
-  // Risk first, then recency — the whole point of the inbox
+  const reviews = loadReviews();
+  for (const c of cards) c.review = reviews[c.session]?.status ?? "pending";
+
+  // Needs-review first, then risk, then recency — the whole point of the inbox
   const order = { critical: 0, high: 1, medium: 2, low: 3 };
+  const rOrder = { flagged: 0, pending: 0, approved: 1 };
   cards.sort(
-    (a, b) => order[a.level] - order[b.level] || b.started.localeCompare(a.started)
+    (a, b) =>
+      rOrder[a.review] - rOrder[b.review] ||
+      order[a.level] - order[b.level] ||
+      b.started.localeCompare(a.started)
   );
   return cards;
 }
