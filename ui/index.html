@@ -13,31 +13,41 @@
   }
   *{box-sizing:border-box;margin:0;padding:0}
   body{background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,'Segoe UI',Roboto,sans-serif;height:100vh;display:flex;flex-direction:column;overflow:hidden}
-  header{display:flex;align-items:center;gap:16px;padding:14px 22px;border-bottom:1px solid var(--line);background:var(--panel)}
+  header{display:flex;align-items:center;gap:14px;padding:12px 22px;border-bottom:1px solid var(--line);background:var(--panel);flex-wrap:wrap}
   .logo{font-weight:800;letter-spacing:.14em;font-size:15px}
   .logo span{color:var(--accent)}
   .tag{color:var(--dim);font-size:12px}
-  .tabs{margin-left:auto;display:flex;gap:4px}
+  .stats{display:flex;gap:18px;margin-left:8px}
+  .stat{display:flex;flex-direction:column;line-height:1.2}
+  .stat b{font:700 15px var(--mono)}
+  .stat span{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em}
+  .tabs{margin-left:auto;display:flex;gap:4px;align-items:center}
   .tab{padding:6px 14px;border-radius:8px;cursor:pointer;color:var(--dim);font-size:13px;border:1px solid transparent}
   .tab.active{color:var(--text);background:var(--panel2);border-color:var(--line)}
   .tab .n{font-family:var(--mono);font-size:11px;color:var(--accent);margin-left:6px}
+  .helpbtn{width:28px;height:28px;border-radius:99px;border:1px solid var(--line);background:none;color:var(--dim);cursor:pointer;font-size:13px}
+  .helpbtn:hover{color:var(--text);border-color:var(--accent)}
   main{flex:1;display:flex;min-height:0}
-  #listwrap{width:400px;min-width:320px;border-right:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column}
-  .filters{display:flex;gap:6px;padding:10px 14px;border-bottom:1px solid var(--line)}
-  .chip{font-size:12px;padding:4px 12px;border-radius:99px;border:1px solid var(--line);color:var(--dim);cursor:pointer}
+  #listwrap{width:410px;min-width:330px;border-right:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column}
+  .toolbar{padding:10px 14px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
+  #search{width:100%;padding:7px 12px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text);font-size:13px;outline:none}
+  #search:focus{border-color:var(--accent)}
+  .chips{display:flex;gap:6px;flex-wrap:wrap}
+  .chip{font-size:12px;padding:3px 11px;border-radius:99px;border:1px solid var(--line);color:var(--dim);cursor:pointer;user-select:none}
   .chip.active{color:var(--text);border-color:var(--accent);background:rgba(91,140,255,.1)}
   #list{flex:1;overflow-y:auto}
-  .card{padding:14px 18px;border-bottom:1px solid var(--line);cursor:pointer;display:flex;flex-direction:column;gap:6px}
+  .card{padding:13px 18px;border-bottom:1px solid var(--line);cursor:pointer;display:flex;flex-direction:column;gap:6px}
   .card:hover{background:var(--panel2)}
   .card.sel{background:var(--panel2);box-shadow:inset 3px 0 0 var(--accent)}
   .card.approved{opacity:.5}
   .row{display:flex;align-items:center;gap:8px}
-  .badge{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.08em;padding:2px 8px;border-radius:99px;text-transform:uppercase}
+  .badge{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.08em;padding:2px 8px;border-radius:99px;text-transform:uppercase;flex-shrink:0}
   .b-critical{background:rgba(255,77,94,.15);color:var(--critical)}
   .b-high{background:rgba(255,159,67,.15);color:var(--high)}
   .b-medium{background:rgba(255,209,102,.13);color:var(--medium)}
   .b-low{background:rgba(61,220,151,.13);color:var(--low)}
-  .rv{font-size:11px}
+  .agent-pill{font-size:10px;font-family:var(--mono);color:var(--dim);border:1px solid var(--line);border-radius:5px;padding:0 6px;flex-shrink:0}
+  .rv{font-size:11px;flex-shrink:0}
   .rv.approved{color:var(--low)} .rv.flagged{color:var(--critical)}
   .repo{font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .meta{color:var(--dim);font-size:12px;display:flex;gap:10px;flex-wrap:wrap}
@@ -45,8 +55,17 @@
   .open-dot{width:7px;height:7px;border-radius:99px;background:var(--accent);animation:pulse 1.6s infinite;flex-shrink:0}
   @keyframes pulse{50%{opacity:.3}}
   #detail{flex:1;overflow-y:auto;padding:26px 34px}
-  .empty{color:var(--dim);display:flex;height:100%;align-items:center;justify-content:center;flex-direction:column;gap:10px;text-align:center}
+  .empty{color:var(--dim);display:flex;height:100%;align-items:center;justify-content:center;flex-direction:column;gap:10px;text-align:center;padding:20px}
   .empty .big{font-size:38px}
+  .onboard{max-width:560px;text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px 26px}
+  .onboard h4{color:var(--text);font-size:14px;margin-bottom:14px}
+  .step{display:flex;gap:12px;margin-bottom:14px;align-items:flex-start}
+  .stepn{width:22px;height:22px;border-radius:99px;background:rgba(91,140,255,.15);color:var(--accent);display:flex;align-items:center;justify-content:center;font:700 12px var(--mono);flex-shrink:0;margin-top:2px}
+  .step p{font-size:13px;color:var(--dim)}
+  .step p b{color:var(--text)}
+  .cmd{display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:5px 10px;margin-top:5px;font-family:var(--mono);font-size:12px;color:var(--text)}
+  .cmd button{margin-left:auto;background:none;border:1px solid var(--line);border-radius:5px;color:var(--dim);font-size:10px;padding:2px 8px;cursor:pointer}
+  .cmd button:hover{color:var(--text);border-color:var(--accent)}
   h2{font-size:17px;margin-bottom:4px}
   .sub{color:var(--dim);font-size:12px;font-family:var(--mono);margin-bottom:16px}
   .actions{display:flex;gap:8px;margin-bottom:20px}
@@ -55,17 +74,21 @@
   .btn.approve{border-color:rgba(61,220,151,.4);color:var(--low)}
   .btn.flag{border-color:rgba(255,77,94,.4);color:var(--critical)}
   .btn.active{background:var(--panel2);box-shadow:0 0 0 1px currentColor inset}
+  .kbd-hint{color:var(--dim);font-size:11px;align-self:center;margin-left:6px}
+  kbd{font-family:var(--mono);font-size:10px;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 5px;color:var(--dim)}
   .score{display:flex;align-items:center;gap:18px;margin-bottom:24px;padding:18px;background:var(--panel);border:1px solid var(--line);border-radius:14px}
   .ring{width:74px;height:74px;border-radius:50%;display:flex;align-items:center;justify-content:center;font:700 20px var(--mono);flex-shrink:0}
   .score .lbl{font-size:12px;color:var(--dim)}
   .score .lvl{font-weight:700;font-size:15px;text-transform:capitalize}
   section{margin-bottom:26px}
   h3{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin-bottom:10px}
-  .finding{display:flex;gap:10px;padding:10px 14px;background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--high);border-radius:8px;margin-bottom:8px;font-size:13px}
+  .finding{padding:10px 14px;background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--high);border-radius:8px;margin-bottom:8px;font-size:13px}
   .finding.s4{border-left-color:var(--critical)}
   .finding.s3{border-left-color:var(--high)}
   .finding.s2{border-left-color:var(--medium)}
+  .finding .frow{display:flex;gap:10px}
   .finding .rule{font-family:var(--mono);font-size:11px;color:var(--dim);white-space:nowrap;padding-top:1px}
+  .finding .why{color:var(--dim);font-size:12px;margin-top:5px;padding-left:2px}
   .claim{padding:10px 14px;border-radius:8px;margin-bottom:8px;font-size:13px;background:var(--panel);border:1px solid var(--line);display:flex;gap:10px;align-items:baseline}
   table{width:100%;border-collapse:collapse;font-size:13px;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
   th{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);text-align:left;padding:9px 14px;border-bottom:1px solid var(--line);font-weight:600}
@@ -92,7 +115,19 @@
   .sig-ok{color:var(--low);font-family:var(--mono);font-size:11px}
   .sig-bad{color:var(--critical);font-family:var(--mono);font-size:11px}
   .hash{font-family:var(--mono);font-size:11px;color:var(--dim)}
-  footer{padding:8px 22px;border-top:1px solid var(--line);color:var(--dim);font-size:11px;font-family:var(--mono);display:flex;gap:14px}
+  footer{padding:8px 22px;border-top:1px solid var(--line);color:var(--dim);font-size:11px;font-family:var(--mono);display:flex;gap:14px;flex-wrap:wrap}
+  #toasts{position:fixed;bottom:44px;right:20px;display:flex;flex-direction:column;gap:8px;z-index:60}
+  .toast{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:10px 16px;font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.4);animation:slidein .18s ease-out}
+  @keyframes slidein{from{transform:translateX(30px);opacity:0}to{transform:none;opacity:1}}
+  #helpmodal{position:fixed;inset:0;background:rgba(5,7,12,.7);display:none;align-items:center;justify-content:center;z-index:50}
+  #helpmodal.show{display:flex}
+  .modal{background:var(--panel);border:1px solid var(--line);border-radius:16px;max-width:640px;width:92%;max-height:84vh;overflow-y:auto;padding:26px 30px}
+  .modal h2{margin-bottom:14px}
+  .modal h4{font-size:13px;margin:18px 0 8px;color:var(--accent)}
+  .modal p,.modal li{font-size:13px;color:var(--dim);margin-bottom:6px}
+  .modal ul{padding-left:18px}
+  .krow{display:flex;gap:10px;align-items:center;font-size:13px;color:var(--dim);margin-bottom:5px}
+  .close{float:right;background:none;border:none;color:var(--dim);font-size:18px;cursor:pointer}
   ::-webkit-scrollbar{width:9px;height:9px}
   ::-webkit-scrollbar-thumb{background:var(--line);border-radius:9px}
   ::-webkit-scrollbar-track{background:transparent}
@@ -102,33 +137,77 @@
 <header>
   <div class="logo">FORE<span>MAN</span></div>
   <div class="tag">the review inbox for your AI workforce</div>
+  <div class="stats" id="stats"></div>
   <div class="tabs">
     <div class="tab active" id="tab-inbox" onclick="showTab('inbox')">Inbox<span class="n" id="n-inbox">0</span></div>
     <div class="tab" id="tab-receipts" onclick="showTab('receipts')">MCP Receipts<span class="n" id="n-receipts">0</span></div>
+    <button class="helpbtn" onclick="toggleHelp()" title="Help (?)">?</button>
   </div>
 </header>
 <main>
   <div id="listwrap">
-    <div class="filters">
-      <div class="chip active" id="f-review" onclick="setFilter('review')">Needs review</div>
-      <div class="chip" id="f-all" onclick="setFilter('all')">All</div>
+    <div class="toolbar">
+      <input id="search" placeholder="Search repos, files, sessions…  ( / )" oninput="renderList()">
+      <div class="chips" id="chips"></div>
     </div>
     <div id="list"></div>
   </div>
-  <div id="detail"><div class="empty"><div class="big">🧑‍🏭</div><div>No session selected.<br>Agent sessions appear here as risk-ranked review cards.</div></div></div>
+  <div id="detail"></div>
   <div id="receipts"></div>
 </main>
 <footer>
   <span id="status">connecting…</span><span>auto-refresh 3s</span><span>127.0.0.1 only — your data never leaves this machine</span>
+  <span style="margin-left:auto"><kbd>j</kbd>/<kbd>k</kbd> navigate · <kbd>a</kbd> approve · <kbd>f</kbd> flag · <kbd>?</kbd> help</span>
 </footer>
+<div id="toasts"></div>
+<div id="helpmodal" onclick="if(event.target===this)toggleHelp()">
+  <div class="modal">
+    <button class="close" onclick="toggleHelp()">✕</button>
+    <h2>🧑‍🏭 How Foreman works</h2>
+    <p>Every AI agent session becomes a <b style="color:var(--text)">review card</b>, ranked by risk. Work the inbox like email — approve what's safe, flag what isn't. Inbox zero means every agent change had human eyes on it.</p>
+    <h4>Connect an agent</h4>
+    <ul>
+      <li><b style="color:var(--text)">Claude Code / Cursor</b> — run <span class="mono">foreman init</span> in your repo (hooks, richest data: commands, claims, diffs).</li>
+      <li><b style="color:var(--text)">Any other IDE or agent</b> — run <span class="mono">foreman watch</span> in the repo. Universal mode diffs against git and works with everything: Windsurf, Copilot, JetBrains AI…</li>
+      <li><b style="color:var(--text)">MCP servers</b> — prefix the server command with <span class="mono">foreman wrap --name &lt;srv&gt; --</span> for signed receipts + rug-pull detection.</li>
+    </ul>
+    <h4>Reading a card</h4>
+    <ul>
+      <li><b style="color:var(--text)">Claims vs evidence</b> — ⚠️ UNVERIFIED means the agent said "it works" but never ran anything that could prove it.</li>
+      <li><b style="color:var(--text)">Findings</b> — destructive commands, mass rewrites, secrets in code, sensitive paths. Each explains why it matters.</li>
+      <li><b style="color:var(--text)">Files</b> — click any file for the before/after diff.</li>
+    </ul>
+    <h4>Keyboard</h4>
+    <div class="krow"><kbd>j</kbd><kbd>k</kbd> next / previous card</div>
+    <div class="krow"><kbd>a</kbd> approve selected · <kbd>f</kbd> flag selected</div>
+    <div class="krow"><kbd>/</kbd> search · <kbd>?</kbd> this help · <kbd>Esc</kbd> close</div>
+    <h4>Tune it</h4>
+    <p>Ignore paths, disable rules, or change thresholds in <span class="mono">~/.foreman/config.json</span> — see <span class="mono">foreman config</span>.</p>
+  </div>
+</div>
 <script>
-let cards=[],receipts=[],selected=null,tab='inbox',filter='review';
+let cards=[],receipts=[],selected=null,tab='inbox',filter='review',agentFilter='all';
 const openDiffs=new Set();
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const base=p=>{const parts=String(p||'').split(/[\\/]/).filter(Boolean);return parts[parts.length-1]||p;}
 const ago=ts=>{const s=(Date.now()-new Date(ts))/1e3;if(s<60)return Math.floor(s)+'s ago';if(s<3600)return Math.floor(s/60)+'m ago';if(s<86400)return Math.floor(s/3600)+'h ago';return Math.floor(s/86400)+'d ago';}
 const lvlColor={critical:'var(--critical)',high:'var(--high)',medium:'var(--medium)',low:'var(--low)'};
+const AGENT_LABEL={'claude-code':'Claude Code','cursor':'Cursor','watch':'Watcher'};
+const WHY={
+  destructive_command:"This command can permanently destroy work or data. Check that it targeted exactly what you expected.",
+  mass_rewrite:"A large file replaced by a much smaller one is how agents silently delete working code.",
+  secret_in_code:"Credentials in source code end up in git history and logs. Rotate the key and move it to env/secret storage.",
+  sensitive_path:"Changes to auth, migrations, CI, or env files can affect security and production data.",
+  unverified_claims:"The agent said it works but never ran anything that could prove it.",
+  failed_verification:"The agent's own checks failed, yet it still claimed success.",
+  untested_change:"Nothing was compiled or executed — this code has never actually run.",
+  mcp_tool_drift:"An MCP server changed its tool definitions — a common vector for prompt-injection rug pulls. Re-accept with: foreman trust <server>",
+};
+
+function toast(msg){const t=document.createElement('div');t.className='toast';t.textContent=msg;$('toasts').appendChild(t);setTimeout(()=>t.remove(),2600);}
+function copyCmd(text,btn){navigator.clipboard.writeText(text).then(()=>{toast('Copied: '+text);if(btn)btn.textContent='copied!';setTimeout(()=>{if(btn)btn.textContent='copy'},1500);});}
+function toggleHelp(){$('helpmodal').classList.toggle('show');}
 
 function showTab(t){tab=t;
   $('tab-inbox').classList.toggle('active',t==='inbox');
@@ -137,39 +216,72 @@ function showTab(t){tab=t;
   $('detail').style.display=t==='inbox'?'block':'none';
   $('receipts').style.display=t==='receipts'?'block':'none';
 }
-function setFilter(f){filter=f;
-  $('f-review').classList.toggle('active',f==='review');
-  $('f-all').classList.toggle('active',f==='all');
-  renderList();
+
+function chips(){
+  const agents=[...new Set(cards.map(c=>c.agent))];
+  $('chips').innerHTML=
+    `<div class="chip ${filter==='review'?'active':''}" onclick="filter='review';renderList()">Needs review</div>
+     <div class="chip ${filter==='all'?'active':''}" onclick="filter='all';renderList()">All</div>`+
+    (agents.length>1?`<div class="chip ${agentFilter==='all'?'active':''}" onclick="agentFilter='all';renderList()" style="margin-left:10px">Every agent</div>`+
+      agents.map(a=>`<div class="chip ${agentFilter===a?'active':''}" onclick="agentFilter='${esc(a)}';renderList()">${esc(AGENT_LABEL[a]||a)}</div>`).join(''):'');
 }
-const visible=()=>filter==='review'?cards.filter(c=>c.review!=='approved'):cards;
+
+function visible(){
+  const q=($('search').value||'').toLowerCase();
+  return cards.filter(c=>
+    (filter==='all'||c.review!=='approved')&&
+    (agentFilter==='all'||c.agent===agentFilter)&&
+    (!q||c.cwd.toLowerCase().includes(q)||c.session.toLowerCase().includes(q)||c.files.some(f=>f.path.toLowerCase().includes(q))));
+}
+
+function renderStats(){
+  const need=cards.filter(c=>c.review!=='approved').length;
+  const claimed=cards.filter(c=>c.claims.length);
+  const verified=claimed.filter(c=>c.verified_claims).length;
+  const sigOk=receipts.filter(r=>r.signature_valid).length;
+  $('stats').innerHTML=`
+    <div class="stat"><b>${cards.length}</b><span>sessions</span></div>
+    <div class="stat"><b style="color:${need?'var(--high)':'var(--low)'}">${need}</b><span>need review</span></div>
+    <div class="stat"><b>${claimed.length?Math.round(verified/claimed.length*100)+'%':'—'}</b><span>claims verified</span></div>
+    <div class="stat"><b>${sigOk}/${receipts.length}</b><span>receipts valid</span></div>`;
+}
 
 function renderList(){
+  chips();
   const v=visible();
   $('n-inbox').textContent=cards.filter(c=>c.review!=='approved').length;
+  if(selected&&!v.some(c=>c.session===selected))selected=v.length?v[0].session:null;
   $('list').innerHTML=v.map(c=>`
     <div class="card ${selected===c.session?'sel':''} ${c.review}" onclick="select('${esc(c.session)}')">
       <div class="row">
         <span class="badge b-${c.level}">${c.level} ${c.score}</span>
         <span class="repo">${esc(base(c.cwd))}</span>
+        <span class="agent-pill">${esc(AGENT_LABEL[c.agent]||c.agent)}</span>
         ${c.open?'<span class="open-dot" title="session still running"></span>':''}
-        ${c.review==='approved'?'<span class="rv approved">✓ approved</span>':''}
-        ${c.review==='flagged'?'<span class="rv flagged">⚑ flagged</span>':''}
-        <span class="dim" style="margin-left:auto;font-size:11px">${ago(c.started)}</span>
+        ${c.review==='approved'?'<span class="rv approved">✓</span>':''}
+        ${c.review==='flagged'?'<span class="rv flagged">⚑</span>':''}
+        <span class="dim" style="margin-left:auto;font-size:11px;flex-shrink:0">${ago(c.started)}</span>
       </div>
       <div class="meta">
         <span><b>${c.files.length}</b> files</span>
         <span><b>${c.commands.length}</b> commands</span>
         <span><b>${c.findings.length}</b> findings</span>
-        ${c.claims.length?`<span>${c.verified_claims?'✅ claims verified':'⚠️ unverified claims'}</span>`:''}
+        ${c.claims.length?`<span>${c.verified_claims?'✅ verified':'⚠️ unverified'}</span>`:''}
       </div>
-    </div>`).join('')||'<div class="empty" style="height:200px;padding:0 20px"><div>'+(filter==='review'?'Inbox zero — nothing needs review. 🧑‍🏭':'No sessions yet.<br>Run <span class="mono">foreman init</span> in a repo, then use your agent.<br>Or seed examples: <span class="mono">foreman demo</span>')+'</div></div>';
+    </div>`).join('')||emptyList();
+  renderDetail();
 }
 
-function select(id){selected=id;openDiffs.clear();renderList();renderDetail();}
+function emptyList(){
+  if(filter==='review'&&cards.length)return '<div class="empty" style="height:200px"><div>Inbox zero — nothing needs review. 🧑‍🏭</div></div>';
+  return '<div class="empty" style="height:200px;font-size:13px"><div>No sessions match.</div></div>';
+}
+
+function select(id){selected=id;openDiffs.clear();renderList();}
 
 async function review(session,status){
   await fetch('/api/review',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({session,status})});
+  toast(status==='approved'?'✓ Approved':status==='flagged'?'⚑ Flagged':'Reopened');
   await refresh();
 }
 
@@ -178,10 +290,9 @@ function toggleDiff(i){
   const row=$('diff-'+i);if(row)row.classList.toggle('show');
 }
 
-// Minimal LCS line diff for full-file rewrites (bounded inputs)
 function lineDiff(a,b){
   const A=a.split('\n'),B=b.split('\n');
-  if(A.length*B.length>250000)return null; // too big — caller falls back
+  if(A.length*B.length>250000)return null;
   const m=A.length,n=B.length;
   const dp=Array.from({length:m+1},()=>new Uint16Array(n+1));
   for(let i=m-1;i>=0;i--)for(let j=n-1;j>=0;j--)
@@ -194,18 +305,10 @@ function lineDiff(a,b){
   }
   while(i<m)out.push(['del',A[i++]]);
   while(j<n)out.push(['add',B[j++]]);
-  // collapse long context runs
   const res=[];let run=[];
-  for(const r of out){
-    if(r[0]==='ctx'){run.push(r);}
-    else{
-      if(run.length>6){res.push(...run.slice(0,2),['skip','… '+(run.length-4)+' unchanged lines …'],...run.slice(-2));}
-      else res.push(...run);
-      run=[];res.push(r);
-    }
-  }
-  if(run.length>6){res.push(...run.slice(0,2),['skip','… '+(run.length-4)+' unchanged lines …'],...run.slice(-2));}
-  else res.push(...run);
+  const flush=()=>{if(run.length>6){res.push(...run.slice(0,2),['skip','… '+(run.length-4)+' unchanged lines …'],...run.slice(-2));}else res.push(...run);run=[];};
+  for(const r of out){if(r[0]==='ctx')run.push(r);else{flush();res.push(r);}}
+  flush();
   return res;
 }
 
@@ -228,16 +331,31 @@ function renderFileDiff(f){
   return '<div class="dim">No content captured for this change.</div>';
 }
 
+function onboardHtml(){
+  return `<div class="empty"><div class="big">🧑‍🏭</div>
+  <div class="onboard">
+    <h4>Welcome to Foreman — connect an agent in under a minute</h4>
+    <div class="step"><div class="stepn">1</div><div style="flex:1"><p><b>Claude Code or Cursor?</b> Install hooks in your repo:</p>
+      <div class="cmd">foreman init<button onclick="copyCmd('foreman init',this)">copy</button></div></div></div>
+    <div class="step"><div class="stepn">2</div><div style="flex:1"><p><b>Anything else</b> (Windsurf, Copilot, JetBrains AI, any tool that edits files) — universal mode:</p>
+      <div class="cmd">foreman watch<button onclick="copyCmd('foreman watch',this)">copy</button></div></div></div>
+    <div class="step"><div class="stepn">3</div><div style="flex:1"><p><b>Just exploring?</b> Seed example sessions:</p>
+      <div class="cmd">foreman demo<button onclick="copyCmd('foreman demo',this)">copy</button></div></div></div>
+    <p style="font-size:12px">Then work normally — every agent session appears here as a risk-ranked review card. Press <kbd>?</kbd> anytime for help.</p>
+  </div></div>`;
+}
+
 function renderDetail(){
   const c=cards.find(x=>x.session===selected);
-  if(!c){$('detail').innerHTML='<div class="empty"><div class="big">🧑‍🏭</div><div>No session selected.</div></div>';return;}
+  if(!c){$('detail').innerHTML=cards.length?'<div class="empty"><div class="big">🧑‍🏭</div><div>Select a session on the left.</div></div>':onboardHtml();return;}
   const col=lvlColor[c.level];
   $('detail').innerHTML=`
-    <h2>${esc(base(c.cwd))} <span class="dim" style="font-weight:400">· ${esc(c.agent)}</span></h2>
+    <h2>${esc(base(c.cwd))} <span class="dim" style="font-weight:400">· ${esc(AGENT_LABEL[c.agent]||c.agent)}</span></h2>
     <div class="sub">${esc(c.cwd)} · session ${esc(c.session.slice(0,12))} · ${new Date(c.started).toLocaleString()}${c.open?' · <span style="color:var(--accent)">RUNNING</span>':''}</div>
     <div class="actions">
       <button class="btn approve ${c.review==='approved'?'active':''}" onclick="review('${esc(c.session)}','${c.review==='approved'?'pending':'approved'}')">✓ ${c.review==='approved'?'Approved':'Approve'}</button>
       <button class="btn flag ${c.review==='flagged'?'active':''}" onclick="review('${esc(c.session)}','${c.review==='flagged'?'pending':'flagged'}')">⚑ ${c.review==='flagged'?'Flagged':'Flag'}</button>
+      <span class="kbd-hint"><kbd>a</kbd> / <kbd>f</kbd></span>
     </div>
     <div class="score">
       <div class="ring" style="background:conic-gradient(${col} ${c.score*3.6}deg,var(--line) 0);"><div style="width:58px;height:58px;border-radius:50%;background:var(--panel);display:flex;align-items:center;justify-content:center">${c.score}</div></div>
@@ -246,10 +364,10 @@ function renderDetail(){
         <div class="lbl">${c.findings.length?c.findings.length+' finding(s) need your eyes':'Nothing suspicious detected — quick approve candidate'}</div>
       </div>
     </div>
-    ${c.findings.length?`<section><h3>Findings</h3>${c.findings.map(f=>`<div class="finding s${f.severity}"><span class="rule">${esc(f.rule)}</span><span>${esc(f.detail)}</span></div>`).join('')}</section>`:''}
+    ${c.findings.length?`<section><h3>Findings</h3>${c.findings.map(f=>`<div class="finding s${f.severity}"><div class="frow"><span class="rule">${esc(f.rule)}</span><span>${esc(f.detail)}</span></div>${WHY[f.rule]?`<div class="why">💡 ${esc(WHY[f.rule])}</div>`:''}</div>`).join('')}</section>`:''}
     ${c.claims.length?`<section><h3>Claims vs Evidence</h3>${c.claims.map(cl=>`<div class="claim"><span>${c.verified_claims?'✅':'❓'}</span><span>“${esc(cl)}”</span></div>`).join('')}
       <div class="dim" style="font-size:12px;margin-top:4px">${c.verified_claims?'Backed by at least one passing verification command.':'No passing verification command found in this session.'}</div></section>`:''}
-    ${c.files.length?`<section><h3>Files touched (${c.files.length}) — click a file to see the diff</h3><table><tr><th>File</th><th>Action</th><th>Lines</th></tr>
+    ${c.files.length?`<section><h3>Files touched (${c.files.length}) — click a file for the diff</h3><table><tr><th>File</th><th>Action</th><th>Lines</th></tr>
       ${c.files.map((f,i)=>{const cut=f.action==='write'&&f.lines_before>=50&&f.lines_after<f.lines_before*0.4;
         return `<tr><td><a class="filelink mono" onclick="toggleDiff(${i})">${esc(f.path)}</a></td><td>${f.action}</td><td class="mono ${cut?'lines-cut':''}">${f.lines_before??'—'} → ${f.lines_after??'—'}${cut?' ⚠':''}</td></tr>
         <tr class="diff ${openDiffs.has(i)?'show':''}" id="diff-${i}"><td colspan="3">${renderFileDiff(f)}</td></tr>`}).join('')}</table></section>`:''}
@@ -263,7 +381,7 @@ function renderReceipts(){
   $('n-receipts').textContent=receipts.length;
   $('receipts').innerHTML=`
     <h2>MCP Receipts</h2>
-    <div class="sub">every attested tool call, ed25519-signed by your local Foreman key</div>
+    <div class="sub">every attested tool call, ed25519-signed by your local Foreman key · verify anytime: foreman verify</div>
     ${receipts.length?`<table><tr><th>Sig</th><th>Server</th><th>Method / Tool</th><th>Params</th><th>Result</th><th>ms</th><th>When</th></tr>
     ${receipts.slice().reverse().map(r=>`<tr>
       <td>${r.signature_valid?'<span class="sig-ok">VALID</span>':'<span class="sig-bad">BROKEN</span>'}</td>
@@ -273,17 +391,37 @@ function renderReceipts(){
       <td class="hash">${esc(r.result_hash.slice(0,12))}…</td>
       <td class="mono">${r.ms}</td>
       <td class="dim">${ago(r.ts)}</td></tr>`).join('')}</table>`
-    :'<div class="empty" style="height:200px"><div>No receipts yet.<br>Wrap an MCP server: <span class="mono">foreman wrap --name github -- npx my-mcp-server</span></div></div>'}`;
+    :`<div class="empty" style="height:260px"><div class="onboard" style="max-width:520px">
+       <h4>No receipts yet — attest an MCP server</h4>
+       <p style="font-size:13px;color:var(--dim)">Prefix any stdio MCP server command in your agent's MCP config:</p>
+       <div class="cmd">foreman wrap --name github -- npx your-mcp-server<button onclick="copyCmd('foreman wrap --name github -- npx your-mcp-server',this)">copy</button></div>
+       <p style="font-size:12px;margin-top:10px">Every tool call gets an ed25519-signed receipt, and tool-definition changes (rug pulls) are flagged in your inbox.</p>
+     </div></div>`}`;
 }
+
+document.addEventListener('keydown',(e)=>{
+  const typing=document.activeElement&&['INPUT','TEXTAREA'].includes(document.activeElement.tagName);
+  if(e.key==='Escape'){$('helpmodal').classList.remove('show');if(typing)document.activeElement.blur();return;}
+  if(typing)return;
+  if(e.key==='?'){toggleHelp();return;}
+  if(e.key==='/'){e.preventDefault();$('search').focus();return;}
+  if(tab!=='inbox')return;
+  const v=visible();if(!v.length)return;
+  const idx=v.findIndex(c=>c.session===selected);
+  if(e.key==='j'){select(v[Math.min(idx+1,v.length-1)].session);}
+  else if(e.key==='k'){select(v[Math.max(idx-1,0)].session);}
+  else if(e.key==='a'&&selected){const c=v[idx];review(selected,c.review==='approved'?'pending':'approved');}
+  else if(e.key==='f'&&selected){const c=v[idx];review(selected,c.review==='flagged'?'pending':'flagged');}
+});
 
 async function refresh(){
   try{
     const[c,r]=await Promise.all([fetch('/api/cards').then(x=>x.json()),fetch('/api/receipts').then(x=>x.json())]);
     cards=c;receipts=r;
     if(!selected&&visible().length)selected=visible()[0].session;
-    renderList();renderDetail();renderReceipts();
+    renderStats();renderList();renderReceipts();
     $('status').textContent='● live';$('status').style.color='var(--low)';
-  }catch(e){$('status').textContent='● disconnected';$('status').style.color='var(--critical)';}
+  }catch(e){$('status').textContent='● disconnected — is `foreman ui` running?';$('status').style.color='var(--critical)';}
 }
 refresh();setInterval(refresh,3000);
 </script>

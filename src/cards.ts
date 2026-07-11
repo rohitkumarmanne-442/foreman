@@ -2,6 +2,7 @@ import { readEvents } from "./journal.js";
 import { assessRisk } from "./risk.js";
 import { isVerificationCommand } from "./claims.js";
 import { loadReviews } from "./reviews.js";
+import { isIgnored } from "./config.js";
 import type {
   ForemanEvent,
   ReviewCard,
@@ -53,7 +54,7 @@ export function buildCards(events?: ForemanEvent[]): ReviewCard[] {
       const d = e.data as unknown as ToolData & { content_sample?: string };
       if (d.tool === "Write" || d.tool === "Edit" || d.tool === "MultiEdit") {
         const path = d.file || "";
-        if (!path) continue;
+        if (!path || isIgnored(path)) continue;
         const existing = filesMap.get(path);
         const touch: FileTouch = existing ?? {
           path,

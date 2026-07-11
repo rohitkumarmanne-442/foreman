@@ -187,6 +187,33 @@ export function installClaudeCodeHooks(opts: { global: boolean }): string {
   return settingsPath;
 }
 
+export function uninstallClaudeCodeHooks(opts: { global: boolean }): boolean {
+  const settingsPath = opts.global
+    ? path.join(os.homedir(), ".claude", "settings.json")
+    : path.join(process.cwd(), ".claude", "settings.json");
+  if (!fs.existsSync(settingsPath)) return false;
+  try {
+    const settings = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
+    let removed = false;
+    for (const key of Object.keys(settings.hooks || {})) {
+      const before = settings.hooks[key].length;
+      settings.hooks[key] = settings.hooks[key].filter(
+        (m: any) =>
+          !(m.hooks || []).some(
+            (h: any) => typeof h.command === "string" && h.command.includes("hook claude-code")
+          )
+      );
+      if (settings.hooks[key].length !== before) removed = true;
+      if (settings.hooks[key].length === 0) delete settings.hooks[key];
+    }
+    if (settings.hooks && Object.keys(settings.hooks).length === 0) delete settings.hooks;
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf8");
+    return removed;
+  } catch {
+    return false;
+  }
+}
+
 function cliPath(): string {
   // dist/hooks/claude-code.js -> dist/cli.js
   const here = new URL(import.meta.url).pathname;

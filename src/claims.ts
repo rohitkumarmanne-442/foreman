@@ -13,6 +13,10 @@ const CLAIM_PATTERNS: RegExp[] = [
   /\bdone[.!]?$/i,
 ];
 
+/** Sentences that look like success claims but actually report problems,
+ * intentions, or uncertainty — never count these as claims. */
+const NEGATION = /\b(fail(ed|ing|s)?|doesn'?t|don'?t|isn'?t|aren'?t|wasn'?t|couldn'?t|can'?t|won'?t|unable|not\s+(yet\s+)?(work|pass|complete|done|fixed|verified)|still\s+(broken|failing)|need(s)?\s+to|should\s+(now\s+)?(work|be)|will\s+(now\s+)?work|todo|wip)\b/i;
+
 export function extractClaims(text: string): string[] {
   if (!text) return [];
   const sentences = text
@@ -22,7 +26,8 @@ export function extractClaims(text: string): string[] {
     .filter((s) => s.length > 2 && s.length < 400);
   const claims: string[] = [];
   for (const s of sentences) {
-    if (CLAIM_PATTERNS.some((p) => p.test(s))) claims.push(s);
+    if (NEGATION.test(s)) continue;
+    if (CLAIM_PATTERNS.some((p) => p.test(s)) && !claims.includes(s)) claims.push(s);
     if (claims.length >= 10) break;
   }
   return claims;
@@ -30,7 +35,10 @@ export function extractClaims(text: string): string[] {
 
 /** Does a shell command look like it verifies anything (tests, build, run)? */
 const VERIFY_PATTERNS: RegExp[] = [
-  /\b(pytest|vitest|jest|mocha|unittest|go\s+test|cargo\s+test|mvn\s+test|gradle\s+test|dotnet\s+test|phpunit|rspec|tox)\b/i,
+  /\b(pytest|vitest|jest|mocha|unittest|go\s+test|cargo\s+test|mvn\s+(test|verify)|gradle\s+(test|check)|dotnet\s+test|phpunit|rspec|tox|bun\s+test)\b/i,
+  /\bpython\s+-m\s+(pytest|unittest)\b/i,
+  /\buv\s+run\s+(pytest|python)\b/i,
+  /\bnode\s+--test\b/,
   /\bnpm\s+(run\s+)?(test|build|typecheck|lint)\b/i,
   /\b(pnpm|yarn|bun)\s+(run\s+)?(test|build|typecheck|lint)\b/i,
   /\bplaywright\b/i,
@@ -39,7 +47,9 @@ const VERIFY_PATTERNS: RegExp[] = [
   /\b(make|cmake)\s+(test|check|build)\b/i,
   /\bcargo\s+(build|check|clippy)\b/i,
   /\bgo\s+(build|vet)\b/i,
+  /\bdocker\s+build\b/i,
   /\bcurl\b.*\b(localhost|127\.0\.0\.1)\b/i,
+  /\bInvoke-WebRequest\b.*\b(localhost|127\.0\.0\.1)\b/i,
   /\bruff|eslint|flake8|mypy|pylint\b/i,
 ];
 

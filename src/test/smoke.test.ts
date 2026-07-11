@@ -154,6 +154,97 @@ test("demo seed and clear", async () => {
   assert.ok(readEvents().some((e) => e.session === "test-session-1"), "real events survive clear");
 });
 
+function runCursorHook(payload: unknown): Promise<number> {
+  return new Promise((resolve) => {
+    const p = spawn(process.execPath, [CLI, "hook", "cursor"], {
+      env: { ...process.env, FOREMAN_HOME: TMP },
+    });
+    p.stdin.write(JSON.stringify(payload));
+    p.stdin.end();
+    p.on("exit", (code) => resolve(code ?? 0));
+  });
+}
+
+test("cursor adapter: shell + file edit + stop → card", async () => {
+  const session = "cursor-conv-1";
+  const roots = [path.join(TMP, "cursor-proj")];
+  await runCursorHook({
+    hook_event_name: "afterShellExecution", conversation_id: session,
+    workspace_roots: roots, command: "npm test", output: "all 12 tests passed",
+  });
+  await runCursorHook({
+    hook_event_name: "afterFileEdit", conversation_id: session,
+    workspace_roots: roots, file_path: "src/pay.ts",
+    edits: [{ old_string: "const fee = 1;", new_string: "const fee = 2;" }],
+  });
+  await runCursorHook({
+    hook_event_name: "stop", conversation_id: session, workspace_roots: roots, status: "completed",
+  });
+  const { buildCards } = await import("../cards.js");
+  const card = buildCards().find((c) => c.session === session)!;
+  assert.ok(card, "cursor card exists");
+  assert.equal(card.agent, "cursor");
+  assert.equal(card.open, false);
+  assert.equal(card.commands.length, 1);
+  assert.equal(card.commands[0].verification, true);
+  assert.deepEqual(card.files[0].edits, [{ old: "const fee = 1;", new: "const fee = 2;" }]);
+});
+
+test("cursor adapter: failure markers mark commands failed", async () => {
+  const session = "cursor-conv-2";
+  await runCursorHook({
+    hook_event_name: "afterShellExecution", conversation_id: session,
+    workspace_roots: [TMP], command: "npm test",
+    output: "npm ERR! Test failed.  FAILED tests/pay.test.ts",
+  });
+  const { buildCards } = await import("../cards.js");
+  const card = buildCards().find((c) => c.session === session)!;
+  assert.equal(card.commands[0].ok, false);
+});
+
+test("universal watcher: git repo changes become events", async () => {
+  const { execFileSync } = await import("node:child_process");
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "foreman-watch-"));
+  const g = (...args: string[]) => execFileSync("git", ["-C", repo, ...args], { encoding: "utf8" });
+  g("init");
+  g("config", "user.email", "t@t.t");
+  g("config", "user.name", "t");
+  fs.writeFileSync(path.join(repo, "big.py"), Array.from({ length: 100 }, (_, i) => `line ${i}`).join("\n"));
+  g("add", "-A");
+  g("commit", "-m", "baseline");
+
+  fs.writeFileSync(path.join(repo, "big.py"), "tiny\nnow\n");
+  const { createWatchState, pollOnce } = await import("../watch.js");
+  const events: any[] = [];
+  const state = createWatchState(repo);
+  const changed = pollOnce(state, ((e: any) => { events.push(e); return e; }) as any);
+  assert.deepEqual(changed, ["big.py"]);
+  const pre = events.find((e) => e.kind === "pre_tool");
+  const tool = events.find((e) => e.kind === "tool");
+  assert.equal(pre.data.lines, 100, "baseline from git HEAD");
+  assert.equal(tool.data.lines_after, 3, "2 lines + trailing newline, same convention as hooks");
+  // second poll with no change journals nothing
+  assert.deepEqual(pollOnce(state, ((e: any) => { events.push(e); return e; }) as any), []);
+  assert.equal(events.length, 2);
+});
+
+test("claims: negations are not success claims", async () => {
+  const { extractClaims } = await import("../claims.js");
+  assert.deepEqual(extractClaims("The tests fail and it doesn't work yet."), []);
+  assert.equal(extractClaims("All tests pass. It should now work.").length, 1, "hedge excluded, claim kept");
+});
+
+test("config: ignore patterns filter files", async () => {
+  const { isIgnored } = await import("../config.js");
+  const cfg = {
+    port: 4517, ignore: ["node_modules/", "*.min.js", "dist/"],
+    disable_rules: [], mass_rewrite_min_lines: 50, mass_rewrite_ratio: 0.4,
+  };
+  assert.equal(isIgnored("frontend/node_modules/x/index.js", cfg), true);
+  assert.equal(isIgnored("build/app.min.js", cfg), true);
+  assert.equal(isIgnored("src/app.ts", cfg), false);
+});
+
 test("mcp proxy: receipts + rug-pull drift", async () => {
   const fakeServer = path.join(TMP, "fake-mcp.mjs");
   fs.writeFileSync(fakeServer, `
