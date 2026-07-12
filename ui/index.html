@@ -57,8 +57,9 @@
   .open-dot{width:7px;height:7px;border-radius:99px;background:var(--accent);animation:pulse 1.6s infinite;flex-shrink:0}
   @keyframes pulse{50%{opacity:.3}}
   #detail{flex:1;overflow-y:auto;padding:26px 34px}
-  .empty{color:var(--dim);display:flex;height:100%;align-items:center;justify-content:center;flex-direction:column;gap:10px;text-align:center;padding:20px}
+  .empty{color:var(--dim);display:flex;height:100%;align-items:center;justify-content:center;flex-direction:column;gap:16px;text-align:center;padding:20px}
   .empty .big{font-size:38px}
+  .mascot{width:190px;max-width:55%;border-radius:18px;border:1px solid var(--line);box-shadow:0 14px 44px rgba(0,0,0,.45)}
   .onboard{max-width:560px;text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px 26px}
   .onboard h4{color:var(--text);font-size:14px;margin-bottom:14px}
   .step{display:flex;gap:12px;margin-bottom:14px;align-items:flex-start}
@@ -407,7 +408,7 @@ function renderFileDiff(f){
 }
 
 function onboardHtml(){
-  return `<div class="empty"><div class="big">🧑‍🏭</div>
+  return `<div class="empty"><img class="mascot" src="/mascot.png" alt="Foreman">
   <div class="onboard">
     <h4>Welcome to Foreman — connect an agent in under a minute</h4>
     <div class="step"><div class="stepn">1</div><div style="flex:1"><p><b>Claude Code or Cursor?</b> Install hooks in your repo:</p>
@@ -422,7 +423,7 @@ function onboardHtml(){
 
 function renderDetail(){
   const c=cards.find(x=>x.session===selected);
-  if(!c){$('detail').innerHTML=cards.length?'<div class="empty"><div class="big">🧑‍🏭</div><div>Select a session on the left.</div></div>':onboardHtml();return;}
+  if(!c){$('detail').innerHTML=cards.length?'<div class="empty"><img class="mascot" src="/mascot.png" alt="Foreman"><div>Select a session on the left.</div></div>':onboardHtml();return;}
   const col=lvlColor[c.level];
   $('detail').innerHTML=`
     <h2>${esc(base(c.cwd))} <span class="dim" style="font-weight:400">· ${esc(AGENT_LABEL[c.agent]||c.agent)}${c.origin?` · 👥 ${esc(c.origin)}'s agent`:''}</span></h2>

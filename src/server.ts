@@ -48,6 +48,10 @@ export function startServer(port = DEFAULT_PORT): http.Server {
     try {
       if (url.pathname === "/" || url.pathname === "/index.html") {
         send(200, fs.readFileSync(uiPath(), "utf8"), "text/html; charset=utf-8");
+      } else if (url.pathname === "/mascot.png") {
+        const png = fs.readFileSync(path.join(path.dirname(uiPath()), "mascot.png"));
+        res.writeHead(200, { "content-type": "image/png", "cache-control": "public, max-age=86400" });
+        res.end(png);
       } else if (url.pathname === "/api/cards") {
         send(200, JSON.stringify(buildCards()));
       } else if (url.pathname === "/api/receipts") {
