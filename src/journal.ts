@@ -23,6 +23,7 @@ export function appendEvent(
     cwd: e.cwd,
     kind: e.kind,
     data: e.data,
+    ...(e.origin ? { origin: e.origin } : {}),
   };
   fs.appendFileSync(todayFile(), JSON.stringify(full) + "\n", "utf8");
   return full;

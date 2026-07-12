@@ -1,6 +1,6 @@
 {
   "name": "foremanjs",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Foreman — the review inbox for your AI workforce. Risk-ranked review cards for every agent session, with signed MCP receipts proving what tools actually did.",
   "license": "MIT",
   "type": "module",

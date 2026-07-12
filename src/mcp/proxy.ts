@@ -4,7 +4,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { appendEvent } from "../journal.js";
 import { BASELINES_DIR, ensureDirs } from "../paths.js";
-import { sha256, canonical, signReceipt, type ReceiptBody } from "./receipts.js";
+import { sha256, canonical, signReceipt, receiptHash, withChain, type ReceiptBody } from "./receipts.js";
 
 /**
  * `foreman wrap --name <server> -- <command...>`
@@ -37,24 +37,43 @@ export function runProxy(serverName: string, command: string[], journal = append
   }
   const pending = new Map<string | number, Pending>();
 
+  const BUF_MAX = 32 * 1024 * 1024; // drop a pathological unterminated line rather than OOM
+
+  const handleRequest = (msg: any) => {
+    if (msg && msg.id !== undefined && typeof msg.method === "string") {
+      pending.set(msg.id, { method: msg.method, params: msg.params, t0: Date.now() });
+    }
+  };
+  const handleResponse = (msg: any) => {
+    if (msg && msg.id !== undefined && (msg.result !== undefined || msg.error !== undefined)) {
+      const req = pending.get(msg.id);
+      if (!req) return;
+      pending.delete(msg.id);
+      recordExchange(serverName, runId, req, msg, journal);
+    }
+  };
+  // JSON-RPC allows batches (arrays) — some SDKs use them
+  const parseLine = (line: string, handler: (msg: any) => void) => {
+    try {
+      const msg = JSON.parse(line);
+      if (Array.isArray(msg)) msg.forEach(handler);
+      else handler(msg);
+    } catch {
+      // non-JSON chatter (logs on stdout) — pass-through already happened
+    }
+  };
+
   // agent -> server: pass through, parse a copy for requests
   let inBuf = "";
   process.stdin.on("data", (chunk: Buffer) => {
     child.stdin.write(chunk);
     inBuf += chunk.toString("utf8");
+    if (inBuf.length > BUF_MAX) inBuf = "";
     let idx;
     while ((idx = inBuf.indexOf("\n")) >= 0) {
       const line = inBuf.slice(0, idx).trim();
       inBuf = inBuf.slice(idx + 1);
-      if (!line) continue;
-      try {
-        const msg = JSON.parse(line);
-        if (msg.id !== undefined && typeof msg.method === "string") {
-          pending.set(msg.id, { method: msg.method, params: msg.params, t0: Date.now() });
-        }
-      } catch {
-        // partial/non-JSON — ignore
-      }
+      if (line) parseLine(line, handleRequest);
     }
   });
   process.stdin.on("end", () => child.stdin.end());
@@ -64,22 +83,12 @@ export function runProxy(serverName: string, command: string[], journal = append
   child.stdout.on("data", (chunk: Buffer) => {
     process.stdout.write(chunk);
     outBuf += chunk.toString("utf8");
+    if (outBuf.length > BUF_MAX) outBuf = "";
     let idx;
     while ((idx = outBuf.indexOf("\n")) >= 0) {
       const line = outBuf.slice(0, idx).trim();
       outBuf = outBuf.slice(idx + 1);
-      if (!line) continue;
-      try {
-        const msg = JSON.parse(line);
-        if (msg.id !== undefined && (msg.result !== undefined || msg.error !== undefined)) {
-          const req = pending.get(msg.id);
-          if (!req) continue;
-          pending.delete(msg.id);
-          recordExchange(serverName, runId, req, msg, journal);
-        }
-      } catch {
-        // ignore
-      }
+      if (line) parseLine(line, handleResponse);
     }
   });
 
@@ -100,7 +109,10 @@ function recordExchange(
 
   // Attest tool calls and the tool-list handshake; skip protocol chatter.
   const interesting =
-    req.method === "tools/call" || req.method === "tools/list" || req.method === "resources/read";
+    req.method === "tools/call" ||
+    req.method === "tools/list" ||
+    req.method === "resources/read" ||
+    req.method === "prompts/get";
   if (!interesting) return;
 
   const tool =
@@ -108,25 +120,30 @@ function recordExchange(
       ? String((req.params as any)?.name ?? "")
       : undefined;
 
-  const body: ReceiptBody = {
-    receipt_id: crypto.randomUUID(),
-    ts: new Date().toISOString(),
-    server,
-    method: req.method,
-    ...(tool ? { tool } : {}),
-    params_hash: sha256(canonical(req.params ?? null)),
-    result_hash: sha256(canonical(resp.result ?? resp.error ?? null)),
-    ms,
-    ok,
-  };
-  const { sig, pk } = signReceipt(body);
-
-  journal({
-    agent: "mcp-proxy",
-    session: runId,
-    cwd: process.cwd(),
-    kind: "mcp_call",
-    data: { ...body, sig, pk },
+  // Chained + signed: each receipt commits to the one before it, so deleting
+  // or reordering history is detectable, not just editing a single entry.
+  withChain((head) => {
+    const body: ReceiptBody = {
+      receipt_id: crypto.randomUUID(),
+      ts: new Date().toISOString(),
+      server,
+      method: req.method,
+      ...(tool ? { tool } : {}),
+      params_hash: sha256(canonical(req.params ?? null)),
+      result_hash: sha256(canonical(resp.result ?? resp.error ?? null)),
+      ms,
+      ok,
+      prev: head,
+    };
+    const { sig, pk } = signReceipt(body);
+    journal({
+      agent: "mcp-proxy",
+      session: runId,
+      cwd: process.cwd(),
+      kind: "mcp_call",
+      data: { ...body, sig, pk },
+    });
+    return { result: undefined, newHead: receiptHash(body, sig) };
   });
 
   if (req.method === "tools/list" && ok) {

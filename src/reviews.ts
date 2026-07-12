@@ -5,9 +5,10 @@ import type { ReviewStatus } from "./types.js";
 
 const FILE = () => path.join(FOREMAN_HOME, "reviews.json");
 
-interface ReviewEntry {
+export interface ReviewEntry {
   status: ReviewStatus;
   ts: string;
+  note?: string;
 }
 
 export function loadReviews(): Record<string, ReviewEntry> {
@@ -18,10 +19,14 @@ export function loadReviews(): Record<string, ReviewEntry> {
   }
 }
 
-export function setReview(session: string, status: ReviewStatus): void {
+export function setReview(session: string, status: ReviewStatus, note?: string): void {
   ensureDirs();
   const all = loadReviews();
   if (status === "pending") delete all[session];
-  else all[session] = { status, ts: new Date().toISOString() };
+  else {
+    all[session] = { status, ts: new Date().toISOString() };
+    const trimmed = (note ?? "").trim().slice(0, 2000);
+    if (trimmed) all[session].note = trimmed;
+  }
   fs.writeFileSync(FILE(), JSON.stringify(all, null, 2), "utf8");
 }

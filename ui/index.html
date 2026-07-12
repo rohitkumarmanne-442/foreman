@@ -160,6 +160,17 @@
   <span style="margin-left:auto"><kbd>j</kbd>/<kbd>k</kbd> navigate · <kbd>a</kbd> approve · <kbd>f</kbd> flag · <kbd>?</kbd> help</span>
 </footer>
 <div id="toasts"></div>
+<div id="flagmodal" style="position:fixed;inset:0;background:rgba(5,7,12,.7);display:none;align-items:center;justify-content:center;z-index:55" onclick="if(event.target===this)closeFlag()">
+  <div class="modal" style="max-width:480px">
+    <h2>⚑ Flag this session</h2>
+    <p style="font-size:13px;color:var(--dim);margin-bottom:10px">Tell the agent what went wrong. Your note is fed back into its next session in this repo (<span class="mono">foreman brief</span>).</p>
+    <textarea id="flagnote" rows="4" placeholder="e.g. Don't force-push to main. The rewrite of app.py deleted working code — restore it and make surgical edits instead." style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;color:var(--text);font-size:13px;padding:10px;resize:vertical"></textarea>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button class="btn flag" onclick="submitFlag()">⚑ Flag session</button>
+      <button class="btn" onclick="closeFlag()">Cancel</button>
+    </div>
+  </div>
+</div>
 <div id="helpmodal" onclick="if(event.target===this)toggleHelp()">
   <div class="modal">
     <button class="close" onclick="toggleHelp()">✕</button>
@@ -257,6 +268,7 @@ function renderList(){
         <span class="badge b-${c.level}">${c.level} ${c.score}</span>
         <span class="repo">${esc(base(c.cwd))}</span>
         <span class="agent-pill">${esc(AGENT_LABEL[c.agent]||c.agent)}</span>
+        ${c.origin?`<span class="agent-pill" style="color:var(--accent);border-color:rgba(91,140,255,.4)">👥 ${esc(c.origin)}</span>`:''}
         ${c.open?'<span class="open-dot" title="session still running"></span>':''}
         ${c.review==='approved'?'<span class="rv approved">✓</span>':''}
         ${c.review==='flagged'?'<span class="rv flagged">⚑</span>':''}
@@ -279,11 +291,15 @@ function emptyList(){
 
 function select(id){selected=id;openDiffs.clear();renderList();}
 
-async function review(session,status){
-  await fetch('/api/review',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({session,status})});
-  toast(status==='approved'?'✓ Approved':status==='flagged'?'⚑ Flagged':'Reopened');
+async function review(session,status,note){
+  await fetch('/api/review',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({session,status,note})});
+  toast(status==='approved'?'✓ Approved':status==='flagged'?'⚑ Flagged — the agent will see your note':'Reopened');
   await refresh();
 }
+let flagTarget=null;
+function openFlag(session){flagTarget=session;$('flagnote').value='';$('flagmodal').style.display='flex';setTimeout(()=>$('flagnote').focus(),50);}
+function closeFlag(){flagTarget=null;$('flagmodal').style.display='none';}
+function submitFlag(){if(!flagTarget)return;const n=$('flagnote').value;const t=flagTarget;closeFlag();review(t,'flagged',n);}
 
 function toggleDiff(i){
   openDiffs.has(i)?openDiffs.delete(i):openDiffs.add(i);
@@ -350,13 +366,14 @@ function renderDetail(){
   if(!c){$('detail').innerHTML=cards.length?'<div class="empty"><div class="big">🧑‍🏭</div><div>Select a session on the left.</div></div>':onboardHtml();return;}
   const col=lvlColor[c.level];
   $('detail').innerHTML=`
-    <h2>${esc(base(c.cwd))} <span class="dim" style="font-weight:400">· ${esc(AGENT_LABEL[c.agent]||c.agent)}</span></h2>
+    <h2>${esc(base(c.cwd))} <span class="dim" style="font-weight:400">· ${esc(AGENT_LABEL[c.agent]||c.agent)}${c.origin?` · 👥 ${esc(c.origin)}'s agent`:''}</span></h2>
     <div class="sub">${esc(c.cwd)} · session ${esc(c.session.slice(0,12))} · ${new Date(c.started).toLocaleString()}${c.open?' · <span style="color:var(--accent)">RUNNING</span>':''}</div>
     <div class="actions">
       <button class="btn approve ${c.review==='approved'?'active':''}" onclick="review('${esc(c.session)}','${c.review==='approved'?'pending':'approved'}')">✓ ${c.review==='approved'?'Approved':'Approve'}</button>
-      <button class="btn flag ${c.review==='flagged'?'active':''}" onclick="review('${esc(c.session)}','${c.review==='flagged'?'pending':'flagged'}')">⚑ ${c.review==='flagged'?'Flagged':'Flag'}</button>
+      <button class="btn flag ${c.review==='flagged'?'active':''}" onclick="${c.review==='flagged'?`review('${esc(c.session)}','pending')`:`openFlag('${esc(c.session)}')`}">⚑ ${c.review==='flagged'?'Flagged':'Flag'}</button>
       <span class="kbd-hint"><kbd>a</kbd> / <kbd>f</kbd></span>
     </div>
+    ${c.review==='flagged'&&c.review_note?`<div class="finding s4" style="margin-bottom:20px"><div class="frow"><span class="rule">your note</span><span>“${esc(c.review_note)}” <span class="dim">— fed to the agent's next session in this repo</span></span></div></div>`:''}
     <div class="score">
       <div class="ring" style="background:conic-gradient(${col} ${c.score*3.6}deg,var(--line) 0);"><div style="width:58px;height:58px;border-radius:50%;background:var(--panel);display:flex;align-items:center;justify-content:center">${c.score}</div></div>
       <div>
@@ -384,7 +401,7 @@ function renderReceipts(){
     <div class="sub">every attested tool call, ed25519-signed by your local Foreman key · verify anytime: foreman verify</div>
     ${receipts.length?`<table><tr><th>Sig</th><th>Server</th><th>Method / Tool</th><th>Params</th><th>Result</th><th>ms</th><th>When</th></tr>
     ${receipts.slice().reverse().map(r=>`<tr>
-      <td>${r.signature_valid?'<span class="sig-ok">VALID</span>':'<span class="sig-bad">BROKEN</span>'}</td>
+      <td>${r.signature_valid?'<span class="sig-ok">VALID</span>':'<span class="sig-bad">BROKEN</span>'}${r.chained?'<span class="dim" title="part of the tamper-evident hash chain"> ⛓</span>':''}</td>
       <td class="mono">${esc(r.server)}</td>
       <td class="mono">${esc(r.tool||r.method)}${r.ok?'':' <span class="fail">✗</span>'}</td>
       <td class="hash">${esc(r.params_hash.slice(0,12))}…</td>
@@ -401,7 +418,7 @@ function renderReceipts(){
 
 document.addEventListener('keydown',(e)=>{
   const typing=document.activeElement&&['INPUT','TEXTAREA'].includes(document.activeElement.tagName);
-  if(e.key==='Escape'){$('helpmodal').classList.remove('show');if(typing)document.activeElement.blur();return;}
+  if(e.key==='Escape'){$('helpmodal').classList.remove('show');closeFlag();if(typing)document.activeElement.blur();return;}
   if(typing)return;
   if(e.key==='?'){toggleHelp();return;}
   if(e.key==='/'){e.preventDefault();$('search').focus();return;}
@@ -411,7 +428,7 @@ document.addEventListener('keydown',(e)=>{
   if(e.key==='j'){select(v[Math.min(idx+1,v.length-1)].session);}
   else if(e.key==='k'){select(v[Math.max(idx-1,0)].session);}
   else if(e.key==='a'&&selected){const c=v[idx];review(selected,c.review==='approved'?'pending':'approved');}
-  else if(e.key==='f'&&selected){const c=v[idx];review(selected,c.review==='flagged'?'pending':'flagged');}
+  else if(e.key==='f'&&selected){const c=v[idx];c.review==='flagged'?review(selected,'pending'):openFlag(selected);}
 });
 
 async function refresh(){

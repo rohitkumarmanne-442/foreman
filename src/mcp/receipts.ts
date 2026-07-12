@@ -50,12 +50,66 @@ export interface ReceiptBody {
   result_hash: string;
   ms: number;
   ok: boolean;
+  /** hash of the previous chained receipt — links receipts into a
+   * tamper-evident chain (absent on legacy/demo receipts) */
+  prev?: string;
 }
 
 export function signReceipt(body: ReceiptBody): { sig: string; pk: string } {
   const { privateKey, publicKeyB64 } = loadOrCreateKeys();
   const sig = crypto.sign(null, Buffer.from(canonical(body), "utf8"), privateKey).toString("base64");
   return { sig, pk: publicKeyB64 };
+}
+
+/** The chain hash of a signed receipt: covers body AND signature. */
+export function receiptHash(body: ReceiptBody, sig: string): string {
+  return sha256(canonical(body) + "|" + sig);
+}
+
+const CHAIN_FILE = () => path.join(KEYS_DIR(), "..", "chain.json");
+const CHAIN_LOCK = () => path.join(KEYS_DIR(), "..", "chain.lock");
+
+/** Take an exclusive lock, run fn with the current chain head, persist the new
+ * head fn returns. Concurrent proxies serialize here so the chain never forks. */
+export function withChain<T>(fn: (head: string) => { result: T; newHead: string }): T {
+  ensureDirs();
+  const deadline = Date.now() + 2000;
+  let fd: number | null = null;
+  for (;;) {
+    try {
+      fd = fs.openSync(CHAIN_LOCK(), "wx");
+      break;
+    } catch {
+      if (Date.now() > deadline) {
+        // stale lock (crashed process) — steal it rather than dropping receipts
+        try { fs.rmSync(CHAIN_LOCK(), { force: true }); } catch { /* raced */ }
+      }
+      const t = Date.now();
+      while (Date.now() - t < 20) { /* brief spin before retry */ }
+    }
+  }
+  try {
+    let head = "";
+    try {
+      head = JSON.parse(fs.readFileSync(CHAIN_FILE(), "utf8")).head ?? "";
+    } catch {
+      head = "";
+    }
+    const { result, newHead } = fn(head);
+    fs.writeFileSync(CHAIN_FILE(), JSON.stringify({ head: newHead, updated: new Date().toISOString() }), "utf8");
+    return result;
+  } finally {
+    if (fd !== null) fs.closeSync(fd);
+    try { fs.rmSync(CHAIN_LOCK(), { force: true }); } catch { /* already gone */ }
+  }
+}
+
+export function readChainHead(): string {
+  try {
+    return JSON.parse(fs.readFileSync(CHAIN_FILE(), "utf8")).head ?? "";
+  } catch {
+    return "";
+  }
 }
 
 export function verifyReceipt(body: ReceiptBody, sigB64: string, pkB64: string): boolean {

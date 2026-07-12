@@ -64,16 +64,29 @@ function lastAssistantText(transcriptPath: string): string {
 /** Entry point for `foreman hook claude-code`. Reads one JSON payload from
  * stdin, journals a compact event, always exits 0 — a hook must never block
  * or fail the agent. */
+const STDIN_MAX = 10 * 1024 * 1024; // a hook must stay bounded no matter what arrives
+
 export async function handleClaudeCodeHook(): Promise<void> {
   let raw = "";
   try {
-    for await (const chunk of process.stdin) raw += chunk;
+    for await (const chunk of process.stdin) {
+      if (raw.length < STDIN_MAX) raw += chunk;
+    }
     const p: HookPayload = JSON.parse(raw);
     const session = p.session_id || "unknown-session";
     const cwd = p.cwd || process.cwd();
     const event = p.hook_event_name || "";
     const tool = p.tool_name || "";
     const input = p.tool_input || {};
+
+    if (event === "SessionStart") {
+      // The feedback loop: surface outstanding human flags for this repo.
+      // SessionStart hook stdout is added to the agent's context.
+      const { buildBrief } = await import("../feedback.js");
+      const brief = buildBrief(cwd);
+      if (brief) process.stdout.write(brief);
+      return;
+    }
 
     if (event === "PreToolUse" && (tool === "Write" || tool === "Edit" || tool === "MultiEdit")) {
       const file = String(input.file_path || "");
@@ -168,6 +181,7 @@ export function installClaudeCodeHooks(opts: { global: boolean }): string {
   settings.hooks = settings.hooks || {};
 
   const entries: Array<[string, string]> = [
+    ["SessionStart", "*"],
     ["PreToolUse", "Write|Edit|MultiEdit"],
     ["PostToolUse", "*"],
     ["Stop", "*"],

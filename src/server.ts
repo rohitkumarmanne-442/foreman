@@ -1,11 +1,14 @@
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
+import { spawn } from "node:child_process";
 import { buildCards } from "./cards.js";
 import { readEvents } from "./journal.js";
 import { setReview } from "./reviews.js";
 import { verifyReceipt, type ReceiptBody } from "./mcp/receipts.js";
-import { DEFAULT_PORT } from "./paths.js";
+import { toReceiptBody } from "./verifyall.js";
+import { DEFAULT_PORT, FOREMAN_HOME } from "./paths.js";
+import { loadConfig } from "./config.js";
 import type { McpCallData } from "./types.js";
 
 function uiPath(): string {
@@ -19,20 +22,11 @@ function receiptRows() {
   const events = readEvents().filter((e) => e.kind === "mcp_call");
   return events.map((e) => {
     const d = e.data as unknown as McpCallData & { receipt_id: string };
-    const body: ReceiptBody = {
-      receipt_id: d.receipt_id,
-      ts: (d as any).ts ?? e.ts,
-      server: d.server,
-      method: d.method,
-      ...(d.tool ? { tool: d.tool } : {}),
-      params_hash: d.params_hash,
-      result_hash: d.result_hash,
-      ms: d.ms,
-      ok: d.ok,
-    };
+    const body: ReceiptBody = toReceiptBody({ ts: e.ts, ...e.data });
     return {
       ...body,
       journaled_at: e.ts,
+      chained: body.prev !== undefined,
       signature_valid: verifyReceipt(body, d.sig, d.pk),
     };
   });
@@ -59,10 +53,15 @@ export function startServer(port = DEFAULT_PORT): http.Server {
         send(200, JSON.stringify(receiptRows()));
       } else if (url.pathname === "/api/review" && req.method === "POST") {
         let body = "";
-        req.on("data", (c) => (body += c));
+        let overflow = false;
+        req.on("data", (c) => {
+          body += c;
+          if (body.length > 100_000) { overflow = true; req.destroy(); }
+        });
         req.on("end", () => {
+          if (overflow) { send(413, JSON.stringify({ error: "body too large" })); return; }
           try {
-            const { session, status } = JSON.parse(body);
+            const { session, status, note } = JSON.parse(body);
             if (
               typeof session !== "string" ||
               !["pending", "approved", "flagged"].includes(status)
@@ -70,7 +69,7 @@ export function startServer(port = DEFAULT_PORT): http.Server {
               send(400, JSON.stringify({ error: "bad request" }));
               return;
             }
-            setReview(session, status);
+            setReview(session, status, typeof note === "string" ? note : undefined);
             send(200, JSON.stringify({ ok: true }));
           } catch (err) {
             send(400, JSON.stringify({ error: String(err) }));
@@ -87,5 +86,42 @@ export function startServer(port = DEFAULT_PORT): http.Server {
     }
   });
   server.listen(port, "127.0.0.1");
+  startNotifier();
   return server;
+}
+
+/** Optional: run the user's notify_command whenever a NEW critical-risk card
+ * appears (config.notify_command, e.g. a toast script or ntfy/slack curl).
+ * Session env vars: FOREMAN_SESSION, FOREMAN_LEVEL, FOREMAN_REPO, FOREMAN_SCORE. */
+function startNotifier(): void {
+  const notifiedPath = path.join(FOREMAN_HOME, "notified.json");
+  let notified: Record<string, true> = {};
+  try {
+    notified = JSON.parse(fs.readFileSync(notifiedPath, "utf8"));
+  } catch { /* first run */ }
+
+  setInterval(() => {
+    try {
+      const cmd = loadConfig(true).notify_command;
+      if (!cmd) return;
+      for (const c of buildCards()) {
+        if (c.level !== "critical" || c.review === "approved" || notified[c.session]) continue;
+        if (c.session.startsWith("demo-")) continue;
+        notified[c.session] = true;
+        fs.writeFileSync(notifiedPath, JSON.stringify(notified), "utf8");
+        spawn(cmd, {
+          shell: true,
+          stdio: "ignore",
+          detached: true,
+          env: {
+            ...process.env,
+            FOREMAN_SESSION: c.session,
+            FOREMAN_LEVEL: c.level,
+            FOREMAN_SCORE: String(c.score),
+            FOREMAN_REPO: c.cwd,
+          },
+        }).unref();
+      }
+    } catch { /* notifier must never take the inbox down */ }
+  }, 15000).unref();
 }

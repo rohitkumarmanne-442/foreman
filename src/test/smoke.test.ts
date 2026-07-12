@@ -245,6 +245,118 @@ test("config: ignore patterns filter files", async () => {
   assert.equal(isIgnored("src/app.ts", cfg), false);
 });
 
+test("feedback loop: flag with note → brief for the repo", async () => {
+  const { setReview } = await import("../reviews.js");
+  const { buildBrief } = await import("../feedback.js");
+  setReview("test-session-1", "flagged", "Don't force-push. Restore app.py — the rewrite deleted working code.");
+  const brief = buildBrief(TMP);
+  assert.ok(brief, "brief exists for repo with flags");
+  assert.ok(brief!.includes("Don't force-push"), "reviewer note included");
+  assert.ok(brief!.includes("mass_rewrite"), "finding rules included");
+  assert.equal(buildBrief(path.join(TMP, "..", "some-other-repo-xyz")), null, "other repos stay silent");
+  setReview("test-session-1", "pending"); // clean up for later tests
+});
+
+test("codex notify handler journals claims", async () => {
+  const payload = JSON.stringify({
+    type: "agent-turn-complete",
+    "turn-id": "t-123",
+    "last-assistant-message": "Refactor complete — all tests pass.",
+  });
+  await new Promise<void>((resolve) => {
+    const p = spawn(process.execPath, [CLI, "hook", "codex", payload], {
+      env: { ...process.env, FOREMAN_HOME: TMP },
+    });
+    p.on("exit", () => resolve());
+  });
+  const { buildCards } = await import("../cards.js");
+  const card = buildCards().find((c) => c.session === "codex-t-123")!;
+  assert.ok(card, "codex card exists");
+  assert.equal(card.agent, "codex");
+  assert.ok(card.claims.some((c) => c.includes("tests pass")));
+});
+
+test("foreman run: supervises a command and closes the card", async () => {
+  const { execFileSync } = await import("node:child_process");
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "foreman-run-"));
+  const g = (...args: string[]) => execFileSync("git", ["-C", repo, ...args], { encoding: "utf8" });
+  g("init"); g("config", "user.email", "t@t.t"); g("config", "user.name", "t");
+  fs.writeFileSync(path.join(repo, "base.txt"), "base");
+  g("add", "-A"); g("commit", "-m", "baseline");
+
+  const script = "require('fs').writeFileSync('made-by-agent.js','console.log(1)')";
+  await new Promise<void>((resolve) => {
+    const p = spawn(
+      process.execPath,
+      [CLI, "run", "--name", "testcli", "--interval", "200", "--", process.execPath, "-e", script],
+      { env: { ...process.env, FOREMAN_HOME: TMP }, cwd: repo }
+    );
+    p.on("exit", () => resolve());
+  });
+  const { buildCards } = await import("../cards.js");
+  const card = buildCards().find((c) => c.agent === "testcli");
+  assert.ok(card, "run card exists");
+  assert.equal(card!.open, false, "card closed on exit");
+  assert.ok(card!.files.some((f) => f.path === "made-by-agent.js"), "agent-made file captured");
+});
+
+test("team packs: signed export, verified import, tamper rejected", async () => {
+  const crypto = await import("node:crypto");
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "foreman-team-"));
+  const { exportPack, importPacks, keyId } = await import("../team.js");
+  const { canonical } = await import("../mcp/receipts.js");
+  const { readEvents } = await import("../journal.js");
+
+  // my own export runs and re-import of my own pack is a no-op
+  const exp = exportPack(TMP, "me");
+  assert.ok(fs.existsSync(exp.file), "pack written");
+  const self = importPacks(TMP);
+  assert.equal(self.imported_events, 0, "own pack not re-imported");
+
+  // craft a teammate pack with a fresh key
+  const { privateKey, publicKey } = crypto.generateKeyPairSync("ed25519");
+  const pkB64 = (publicKey.export({ type: "spki", format: "der" }) as Buffer).toString("base64");
+  const mateEvent = {
+    v: 1, id: crypto.randomUUID(), ts: new Date().toISOString(),
+    agent: "claude-code", session: "mate-session-1", cwd: repo, kind: "session_end",
+    data: { transcript: "", last_message: "Everything works.", claims: ["Everything works."] },
+  };
+  const body = { owner: "priya", created: new Date().toISOString(), events: [mateEvent], reviews: {} };
+  const sig = crypto.sign(null, Buffer.from(canonical({ owner: body.owner, created: body.created, events: body.events, reviews: body.reviews }), "utf8"), privateKey).toString("base64");
+  fs.mkdirSync(path.join(repo, ".foreman-team"), { recursive: true });
+  fs.writeFileSync(path.join(repo, ".foreman-team", `${keyId(pkB64)}.json`), JSON.stringify({ v: 1, key: pkB64, ...body, sig }));
+
+  const imp = importPacks(repo);
+  assert.equal(imp.imported_events, 1, "teammate event imported");
+  const imported = readEvents().find((e) => e.session === "mate-session-1")!;
+  assert.equal(imported.origin, "priya", "origin attached");
+  assert.equal(importPacks(repo).imported_events, 0, "idempotent re-import");
+
+  // tampered pack (event injected after signing) must be rejected
+  const tampered = JSON.parse(fs.readFileSync(path.join(repo, ".foreman-team", `${keyId(pkB64)}.json`), "utf8"));
+  tampered.events.push({ ...mateEvent, id: crypto.randomUUID(), session: "evil-session" });
+  fs.writeFileSync(path.join(repo, ".foreman-team", "aaaa000000bb.json"), JSON.stringify(tampered));
+  const bad = importPacks(repo);
+  assert.ok(bad.skipped_invalid.includes("aaaa000000bb.json"), "tampered pack rejected");
+  assert.equal(readEvents().some((e) => e.session === "evil-session"), false, "evil event not imported");
+});
+
+test("gate: fails on unapproved critical, clears after approval", async () => {
+  const { setReview } = await import("../reviews.js");
+  const gate = (): Promise<number> =>
+    new Promise((resolve) => {
+      const p = spawn(process.execPath, [CLI, "gate", "--repo", TMP], {
+        env: { ...process.env, FOREMAN_HOME: TMP },
+      });
+      p.on("exit", (code) => resolve(code ?? 0));
+    });
+  setReview("test-session-1", "pending");
+  assert.equal(await gate(), 1, "gate fails with critical pending");
+  setReview("test-session-1", "approved");
+  assert.equal(await gate(), 0, "gate clears after approval");
+  setReview("test-session-1", "pending");
+});
+
 test("mcp proxy: receipts + rug-pull drift", async () => {
   const fakeServer = path.join(TMP, "fake-mcp.mjs");
   fs.writeFileSync(fakeServer, `
@@ -292,15 +404,33 @@ test("mcp proxy: receipts + rug-pull drift", async () => {
   const drift = drifts[0].data as any;
   assert.deepEqual(drift.changed, ["add"]);
 
-  // and every receipt signature verifies
+  // and every receipt signature verifies (prev included via toReceiptBody)
   const { verifyReceipt } = await import("../mcp/receipts.js");
+  const { toReceiptBody } = await import("../verifyall.js");
   for (const e of calls) {
     const d = e.data as any;
-    const body = {
-      receipt_id: d.receipt_id, ts: d.ts, server: d.server, method: d.method,
-      ...(d.tool ? { tool: d.tool } : {}),
-      params_hash: d.params_hash, result_hash: d.result_hash, ms: d.ms, ok: d.ok,
-    };
-    assert.equal(verifyReceipt(body, d.sig, d.pk), true, "receipt signature valid");
+    assert.equal(verifyReceipt(toReceiptBody(d), d.sig, d.pk), true, "receipt signature valid");
   }
+});
+
+test("receipt chain: intact after real proxy runs, breaks on reorder", async () => {
+  const { verifyAll } = await import("../verifyall.js");
+  const before = verifyAll();
+  assert.equal(before.sig_broken.length, 0, "all signatures valid");
+  assert.ok(before.chained >= 3, `chained receipts exist (got ${before.chained})`);
+  assert.equal(before.chain_breaks.length, 0, "chain intact");
+
+  // reorder two chained mcp_call lines inside the journal → chain must break
+  const dir = path.join(TMP, "events");
+  const file = fs.readdirSync(dir).map((f) => path.join(dir, f))
+    .find((f) => f.endsWith(".jsonl") && fs.readFileSync(f, "utf8").includes('"prev"'))!;
+  const backup = fs.readFileSync(file, "utf8");
+  const lines = backup.split("\n").filter(Boolean);
+  const idx = lines.map((l, i) => (l.includes('"prev"') ? i : -1)).filter((i) => i >= 0);
+  assert.ok(idx.length >= 2, "at least two chained receipts in one file");
+  [lines[idx[0]], lines[idx[1]]] = [lines[idx[1]], lines[idx[0]]];
+  fs.writeFileSync(file, lines.join("\n") + "\n", "utf8");
+  const after = verifyAll();
+  fs.writeFileSync(file, backup, "utf8"); // restore
+  assert.ok(after.chain_breaks.length >= 1, "reordering detected as chain break");
 });

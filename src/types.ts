@@ -3,9 +3,11 @@ export interface ForemanEvent {
   v: 1;
   id: string;
   ts: string; // ISO 8601
-  agent: string; // "claude-code" | "mcp-proxy" | future agents
+  agent: string; // "claude-code" | "cursor" | "watch" | "mcp-proxy" | run label…
   session: string; // agent session id, or proxy run id
   cwd: string;
+  /** teammate name when the event arrived via a team pack import */
+  origin?: string;
   kind:
     | "pre_tool" // snapshot before a mutating tool runs (Write)
     | "tool" // a tool the agent executed
@@ -91,6 +93,10 @@ export type ReviewStatus = "pending" | "approved" | "flagged";
 export interface ReviewCard {
   session: string;
   review: ReviewStatus;
+  /** reviewer's note, set when flagging — fed back to the agent via `foreman brief` */
+  review_note?: string;
+  /** teammate name when this card was imported from a team pack */
+  origin?: string;
   agent: string;
   cwd: string;
   started: string;

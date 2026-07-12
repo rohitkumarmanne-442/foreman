@@ -14,6 +14,8 @@ export interface ForemanConfig {
   mass_rewrite_min_lines: number;
   /** …when the new content is below this fraction of the original. */
   mass_rewrite_ratio: number;
+  /** Shell command run when a NEW critical card appears (env: FOREMAN_SESSION/LEVEL/SCORE/REPO). */
+  notify_command?: string;
 }
 
 export const DEFAULTS: ForemanConfig = {

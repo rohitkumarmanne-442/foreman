@@ -66,7 +66,25 @@ This adds Foreman to `.cursor/hooks.json` (Cursor 1.7+). Shell commands, file ed
 </details>
 
 <details>
-<summary><b>Windsurf, Copilot, JetBrains AI, Codex, or anything else</b></summary>
+<summary><b>Codex CLI, Gemini CLI, Copilot CLI, aider — any terminal agent</b></summary>
+
+Launch the agent through Foreman — its TTY is untouched, and the review card closes the moment it exits:
+
+```bash
+foreman run --name codex -- codex
+foreman run --name gemini -- gemini
+foreman run --name copilot -- copilot
+```
+
+**Codex bonus** — add to `~/.codex/config.toml` to also capture what Codex *claims* at the end of each turn (feeds the claims-vs-evidence check):
+
+```toml
+notify = ["foreman", "hook", "codex"]
+```
+</details>
+
+<details>
+<summary><b>Windsurf, JetBrains AI, or any IDE without hooks</b></summary>
 
 ```bash
 cd your-project
@@ -84,6 +102,24 @@ foreman ui        # → http://127.0.0.1:4517
 
 Keep it open while you work — cards appear and update live. Keyboard: `j`/`k` navigate, `a` approve, `f` flag, `/` search, `?` help.
 
+## The feedback loop: flagging teaches the agent
+
+Approving is half the job — **flagging closes the loop**. When you flag a session you can attach a note (*"Don't force-push. The rewrite of app.py deleted working code."*). From then on:
+
+- **Claude Code** — every new session in that repo automatically receives your flags and notes as context (via the SessionStart hook). The agent starts work already knowing what the human rejected and why.
+- **Any other agent** — run `foreman brief` in the repo and paste/pipe the output, or point your rules file (`.cursorrules`, `AGENTS.md`, …) at it.
+
+Unflag (or approve) the session and the brief goes silent. Your review stops being a graveyard of vetoes and becomes training signal.
+
+## Gate your CI on human review
+
+```bash
+foreman gate                 # exit 1 if any unapproved high/critical session exists here
+foreman gate --level critical
+```
+
+Drop it in a pre-push hook or CI job: **agent-written changes can't ship until a human approved the session that produced them.** The gate ignores demo data and other repos, and prints exactly which sessions are blocking.
+
 ## MCP attestation: make tool calls provable
 
 MCP's `tool_call → tool_result` cycle runs on an honor system: nothing proves a server did what it claims, and nothing notices when a server quietly *changes what its tools say they do* (the classic rug pull that smuggles prompt injections into your agent).
@@ -99,26 +135,50 @@ Wrap any stdio MCP server — in your agent's MCP config, prefix the command:
 
 You get:
 
-- **Signed receipts** — every `tools/call` is journaled with SHA-256 hashes of params and result, latency and outcome, **ed25519-signed** by a key that never leaves your machine. `foreman verify` re-checks every signature; tamper with one byte and it breaks.
+- **Signed receipts** — every `tools/call` is journaled with SHA-256 hashes of params and result, latency and outcome, **ed25519-signed** by a key that never leaves your machine.
+- **Hash-linked chains** — each receipt commits to the hash of the one before it. Editing a receipt breaks its signature; **deleting or reordering history breaks the chain**. `foreman verify` checks both and tells you exactly where history was altered.
 - **Rug-pull detection** — tool definitions are fingerprinted on first use. If a server's tool descriptions ever change (*"adds two numbers"* → *"adds two numbers. IGNORE PREVIOUS INSTRUCTIONS…"*), a finding lands in your inbox. Re-accept intentional updates with `foreman trust <server>`.
 
-The proxy passes every byte through untouched — your agent and the server never know it's there.
+The proxy passes every byte through untouched (JSON-RPC batches included) — your agent and the server never know it's there.
+
+## Team mode: git is the sync layer
+
+Your teammates run agents too. See their sessions without any server:
+
+```bash
+foreman team sync     # inside the shared repo
+git add .foreman-team && git commit -m "foreman packs" && git push
+```
+
+`team sync` exports your review cards for this repo into `.foreman-team/<your-key>.json` — **ed25519-signed** so provenance is verifiable — and imports every teammate pack it finds there (packs that fail signature verification are rejected). Imported cards appear in your inbox with a 👥 owner badge. Review status stays local: you approve for you.
 
 ## All commands
 
 ```text
 foreman init [--agent claude|cursor|all] [--global]   install hooks
-foreman watch [path] [--interval ms]                  universal mode (any IDE/agent)
+foreman run [--name codex] -- <agent command…>        supervise any terminal agent
+foreman watch [path] [--interval ms]                  watch a repo (any IDE/agent)
 foreman ui [--port 4517]                              open the review inbox
+foreman brief [path]                                  print human flags for a repo (agents read this)
+foreman gate [--level high|critical] [--repo path]    exit 1 if unapproved risky sessions exist
+foreman team sync                                     exchange signed card packs via the repo
 foreman status                                        one-screen summary in the terminal
 foreman report [--out audit.md]                       markdown audit report of all sessions
 foreman demo [--clear]                                seed / remove showcase data
 foreman wrap --name <srv> -- <command…>               attest an MCP server
 foreman trust <srv>                                   re-baseline a server's tools
-foreman verify                                        re-verify every signed receipt
+foreman verify                                        verify signatures + chain continuity
 foreman config                                        show config path + active settings
 foreman uninstall [--global]                          remove hooks (journal stays)
 ```
+
+## Who uses Foreman for what
+
+- **The solo dev with five agents** — risk-ranked inbox instead of rubber-stamping; the flag→brief loop stops repeat mistakes.
+- **The team lead** — `foreman team sync` shows every teammate agent's work; `foreman report` turns a sprint of AI changes into an audit document.
+- **The security-conscious org** — MCP receipts + hash chains give a tamper-evident record of what tools actually did; rug-pull detection guards the MCP supply chain.
+- **The CI pipeline** — `foreman gate` blocks merges until a human approved the sessions behind the diff.
+- **The mentor** — point a junior's inbox at their agent sessions; "claims vs evidence" teaches why *"it works"* needs proof.
 
 ## Tune it to your codebase
 
@@ -130,7 +190,9 @@ Create `~/.foreman/config.json` (see `foreman config` for the path and live valu
   "ignore": ["node_modules/", "dist/", "*.lock", "generated/"],   // paths to never track
   "disable_rules": ["untested_change"],                            // rules you don't want
   "mass_rewrite_min_lines": 50,   // smallest file that can count as a mass rewrite
-  "mass_rewrite_ratio": 0.4       // flag when new content < 40% of the original
+  "mass_rewrite_ratio": 0.4,      // flag when new content < 40% of the original
+  "notify_command": "powershell -c \"[console]::beep(880,300)\""   // optional: runs on NEW critical cards
+  // notify_command gets env vars: FOREMAN_SESSION, FOREMAN_LEVEL, FOREMAN_SCORE, FOREMAN_REPO
 }
 ```
 
@@ -180,10 +242,14 @@ No daemon, no database. The journal is append-only JSONL; the inbox reads it liv
 
 - [x] Claude Code + Cursor adapters, universal watch mode
 - [x] Approve/flag review workflow, diff viewer, audit reports
-- [ ] Feed review decisions back to the agent (flag → the agent learns why)
-- [ ] Copilot CLI / Codex / Gemini CLI native adapters
-- [ ] Hash-linked receipt chains (tamper-evident history, not just tamper-evident entries)
-- [ ] Team mode: share cards for the changes your teammates' agents made
+- [x] Feedback loop: flag notes injected into the agent's next session (`foreman brief`)
+- [x] Codex / Gemini / Copilot / any-CLI supervision (`foreman run`) + Codex notify adapter
+- [x] Hash-linked receipt chains — deleting or reordering history is detectable
+- [x] Team mode: signed card packs synced through git
+- [x] CI gate (`foreman gate`) + critical-card notifications (`notify_command`)
+- [ ] Native hook adapters as more agents ship hook APIs
+- [ ] Card actions that write back to PRs (approve → PR comment with evidence)
+- [ ] Windows/macOS menu-bar tray for the inbox
 
 ## License
 

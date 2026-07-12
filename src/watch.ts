@@ -20,6 +20,8 @@ const SAMPLE_MAX = 20000;
 export interface WatchState {
   repo: string;
   session: string;
+  /** which agent gets credited on the card ("watch", or a `foreman run` label) */
+  agent: string;
   /** file -> sha256 of last journaled content, to avoid duplicate events */
   lastHash: Map<string, string>;
   /** files whose pre_tool baseline event was already journaled */
@@ -34,16 +36,24 @@ function git(repo: string, args: string[]): string {
   });
 }
 
-export function createWatchState(repo: string): WatchState {
+export function createWatchState(repo: string, agent = "watch"): WatchState {
   git(repo, ["rev-parse", "--is-inside-work-tree"]); // throws if not a repo
   return {
     repo,
-    session: `watch-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "")}-${crypto
+    agent,
+    session: `${agent}-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "")}-${crypto
       .randomUUID()
       .slice(0, 4)}`,
     lastHash: new Map(),
     baselined: new Set(),
   };
+}
+
+const FILE_MAX = 5 * 1024 * 1024; // skip content capture beyond this, still count lines
+
+/** NUL byte in the head of the file → treat as binary, don't journal content. */
+function looksBinary(content: string): boolean {
+  return content.slice(0, 8192).includes("\u0000");
 }
 
 /** One poll: journal every file whose content changed since the last poll. */
@@ -67,10 +77,12 @@ export function pollOnce(state: WatchState, journal = appendEvent): string[] {
     const full = path.join(state.repo, file);
     let content: string;
     try {
+      if (fs.statSync(full).size > FILE_MAX) continue; // huge artifact — not reviewable
       content = fs.readFileSync(full, "utf8");
     } catch {
-      continue; // binary/locked/vanished
+      continue; // locked/vanished
     }
+    if (looksBinary(content)) continue;
     const hash = crypto.createHash("sha256").update(content).digest("hex");
     if (state.lastHash.get(file) === hash) continue;
     state.lastHash.set(file, hash);
@@ -88,7 +100,7 @@ export function pollOnce(state: WatchState, journal = appendEvent): string[] {
         exists = false; // new/untracked file
       }
       journal({
-        agent: "watch",
+        agent: state.agent,
         session: state.session,
         cwd: state.repo,
         kind: "pre_tool",
@@ -103,7 +115,7 @@ export function pollOnce(state: WatchState, journal = appendEvent): string[] {
     }
 
     journal({
-      agent: "watch",
+      agent: state.agent,
       session: state.session,
       cwd: state.repo,
       kind: "tool",
@@ -121,7 +133,7 @@ export function pollOnce(state: WatchState, journal = appendEvent): string[] {
 
 export function endWatchSession(state: WatchState, journal = appendEvent): void {
   journal({
-    agent: "watch",
+    agent: state.agent,
     session: state.session,
     cwd: state.repo,
     kind: "session_end",

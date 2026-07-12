@@ -98,6 +98,7 @@ export function buildCards(events?: ForemanEvent[]): ReviewCard[] {
     cards.push({
       session,
       review: "pending",
+      ...(first.origin ? { origin: first.origin } : {}),
       agent: first.agent,
       cwd: first.cwd,
       started: first.ts,
@@ -117,7 +118,11 @@ export function buildCards(events?: ForemanEvent[]): ReviewCard[] {
   }
 
   const reviews = loadReviews();
-  for (const c of cards) c.review = reviews[c.session]?.status ?? "pending";
+  for (const c of cards) {
+    c.review = reviews[c.session]?.status ?? "pending";
+    const note = reviews[c.session]?.note;
+    if (note) c.review_note = note;
+  }
 
   // Needs-review first, then risk, then recency — the whole point of the inbox
   const order = { critical: 0, high: 1, medium: 2, low: 3 };

@@ -21,16 +21,27 @@ const HELP = `
 
   GET STARTED
     foreman init [--agent claude|cursor|all] [--global]
-                                 install hooks (default: all agents detected, this repo)
+                                 install hooks (default: all agents, this repo)
     foreman ui [--port 4517]     open the review inbox (127.0.0.1 only)
-    foreman watch [path]         UNIVERSAL mode — watch any repo, works with any IDE/agent
+    foreman run [--name codex] -- <agent command...>
+                                 supervise ANY terminal agent (Codex, Gemini, Copilot, aider…)
+    foreman watch [path]         watch a repo continuously — works with any IDE/agent
     foreman demo [--clear]       seed (or remove) showcase data to explore the inbox
+
+  THE FEEDBACK LOOP
+    foreman brief [path]         print outstanding human flags for a repo (agents read this;
+                                 injected automatically into Claude Code sessions)
+    foreman gate [--level high]  exit 1 if unapproved risky sessions exist — for CI/pre-push
 
   MCP ATTESTATION
     foreman wrap --name <srv> -- <command...>
                                  run an MCP server behind the attestation proxy
     foreman trust <srv>          accept a server's current tools as the new baseline
-    foreman verify               re-verify every signed receipt
+    foreman verify               verify every receipt signature + chain continuity
+
+  TEAM
+    foreman team sync            export my cards for this repo + import teammates'
+                                 (signed packs in .foreman-team/ — git is the sync)
 
   EVERYTHING ELSE
     foreman status               one-screen summary in the terminal
@@ -56,7 +67,85 @@ async function main(): Promise<void> {
     const agent = process.argv[3];
     if (agent === "claude-code") await handleClaudeCodeHook();
     else if (agent === "cursor") await handleCursorHook();
+    else if (agent === "codex") {
+      const { handleCodexNotify } = await import("./hooks/codex.js");
+      await handleCodexNotify();
+    }
     return; // always exit 0 — hooks must never break the agent
+  }
+
+  if (cmd === "run") {
+    const { runAgent } = await import("./run.js");
+    const label = arg("--name") ?? "cli-agent";
+    const sep = process.argv.indexOf("--");
+    const command = sep >= 0 ? process.argv.slice(sep + 1) : [];
+    if (!command.length) {
+      console.error("usage: foreman run [--name codex] -- <agent command...>");
+      process.exit(1);
+    }
+    try {
+      runAgent(label, command, Number(arg("--interval") ?? 1500));
+    } catch {
+      console.error("foreman run needs a git repository (it diffs against HEAD). Run `git init` first.");
+      process.exit(1);
+    }
+    return;
+  }
+
+  if (cmd === "brief") {
+    const { buildBrief } = await import("./feedback.js");
+    const target = process.argv[3] && !process.argv[3].startsWith("--") ? process.argv[3] : process.cwd();
+    const brief = buildBrief(target);
+    console.log(brief ?? "No outstanding flags for this repo. 🧑‍🏭");
+    return;
+  }
+
+  if (cmd === "gate") {
+    const { sameRepo } = await import("./feedback.js");
+    const levelArg = (arg("--level") ?? "high").toLowerCase();
+    const rank: Record<string, number> = { low: 0, medium: 1, high: 2, critical: 3 };
+    const threshold = rank[levelArg] ?? 2;
+    const repo = arg("--repo") ?? process.cwd();
+    const offenders = buildCards().filter(
+      (c) =>
+        c.review !== "approved" &&
+        !c.session.startsWith("demo-") &&
+        sameRepo(c.cwd, repo) &&
+        rank[c.level] >= threshold
+    );
+    if (offenders.length) {
+      console.error(`🧑‍🏭 GATE FAILED — ${offenders.length} unapproved session(s) at ${levelArg}+ risk in ${repo}:`);
+      for (const c of offenders) {
+        console.error(`   [${c.level} ${c.score}] ${c.session}  (${c.findings.length} findings)`);
+        for (const f of c.findings.slice(0, 2)) console.error(`      · ${f.rule}: ${f.detail.slice(0, 90)}`);
+      }
+      console.error(`   Review them:  foreman ui`);
+      process.exit(1);
+    }
+    console.log(`🧑‍🏭 Gate clear — no unapproved ${levelArg}+ sessions for ${repo}.`);
+    return;
+  }
+
+  if (cmd === "team") {
+    const sub = process.argv[3];
+    if (sub !== "sync") {
+      console.error("usage: foreman team sync   (run inside the shared repo)");
+      process.exit(1);
+    }
+    const { exportPack, importPacks } = await import("./team.js");
+    const repo = process.cwd();
+    try {
+      const exp = exportPack(repo);
+      const imp = importPacks(repo);
+      console.log(`✅ Exported ${exp.sessions} of your session(s) → ${exp.file}`);
+      console.log(`✅ Imported ${imp.imported_events} new event(s) from ${imp.packs} teammate pack(s).`);
+      for (const bad of imp.skipped_invalid) console.log(`   ⚠ skipped ${bad} — signature or format invalid`);
+      console.log(`   Commit .foreman-team/ so teammates get your cards on their next sync.`);
+    } catch (err) {
+      console.error(`team sync failed: ${err instanceof Error ? err.message : err}`);
+      process.exit(1);
+    }
+    return;
   }
 
   if (cmd === "init") {
@@ -142,19 +231,18 @@ async function main(): Promise<void> {
   }
 
   if (cmd === "verify") {
-    const calls = readEvents().filter((e) => e.kind === "mcp_call");
-    let ok = 0, bad = 0;
-    for (const e of calls) {
-      const d = e.data as unknown as McpCallData & ReceiptBody;
-      const body: ReceiptBody = {
-        receipt_id: d.receipt_id, ts: (d as any).ts, server: d.server, method: d.method,
-        ...(d.tool ? { tool: d.tool } : {}),
-        params_hash: d.params_hash, result_hash: d.result_hash, ms: d.ms, ok: d.ok,
-      };
-      verifyReceipt(body, d.sig, d.pk) ? ok++ : bad++;
+    const { verifyAll } = await import("./verifyall.js");
+    const r = verifyAll();
+    console.log(`Receipts: ${r.total} total`);
+    console.log(`  signatures : ${r.sig_valid} valid, ${r.sig_broken.length} broken${r.sig_broken.length ? "  ← " + r.sig_broken.slice(0, 3).join(", ") : ""}`);
+    if (r.chained > 0) {
+      console.log(`  chain      : ${r.chained} chained receipt(s), ${r.chain_breaks.length} break(s)${r.head_matches === false ? " — head mismatch (journal newer than chain head?)" : ""}`);
+      for (const b of r.chain_breaks.slice(0, 5)) console.log(`     ✗ ${b.receipt_id}: ${b.reason}`);
+    } else {
+      console.log(`  chain      : no chained receipts yet (chains start with your next foreman wrap call)`);
     }
-    console.log(`Receipts: ${calls.length} total — ${ok} valid, ${bad} broken`);
-    if (bad > 0) process.exit(2);
+    if (r.sig_broken.length || r.chain_breaks.length) process.exit(2);
+    console.log(`  ✅ history intact`);
     return;
   }
 
