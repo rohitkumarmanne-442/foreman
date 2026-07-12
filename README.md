@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🧑‍🏭 Foreman
+<img src="assets/brand/banner.png" alt="Foreman — a small white robot inspecting your agents' work with a magnifying glass, thinking: Prove it." width="100%">
 
 **The review inbox for your AI workforce.**
 
@@ -17,9 +17,13 @@
 
 ---
 
+<img align="right" width="170" src="assets/brand/logo.png" alt="Foreman mascot thinking: Prove it.">
+
 You let AI agents write your code. They produce more change than any human can honestly review, so you skim, you rubber-stamp — and one day an agent rewrites an 869-line production app down to 97 lines, announces *"everything works!"*, and force-pushes it while you're looking the other way.
 
 That happened to me. Foreman exists so it never happens silently again.
+
+Foreman's whole personality fits in its thought cloud: **"Prove it."** Every claim your agents make gets checked against what they actually did.
 
 ![The Foreman inbox: a critical session with a force push, an 89% file rewrite, and an unverified success claim — with the reviewer's note that gets fed back to the agent](assets/inbox.png)
 

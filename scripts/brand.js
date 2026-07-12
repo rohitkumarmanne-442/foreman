@@ -32,11 +32,11 @@ const CLOUD_TEXT = "Prove it.";
 const LAYOUT = {
   "logo-raw.png": {
     out: "logo.png",
-    left: 0.825, top: 0.265, width: 0.24, rotate: -5, fontFrac: 0.052,
+    left: 0.808, top: 0.254, width: 0.21, rotate: -4, fontFrac: 0.046,
   },
   "banner-raw.png": {
     out: "banner.png",
-    left: 0.862, top: 0.235, width: 0.17, rotate: -3, fontFrac: 0.026,
+    left: 0.858, top: 0.24, width: 0.145, rotate: -3, fontFrac: 0.025,
   },
 };
 
@@ -118,6 +118,22 @@ function selfTest() {
   console.log("Self-test rendered placeholder art + composed text. Inspect assets/brand/*.png, then replace the *-raw.png files with the real mascot art and rerun.");
 }
 
+/** Crop the robot's head from the portrait → ui/tray.png (system-tray icon). */
+function makeTrayIcon() {
+  const raw = path.join(BRAND, "logo-raw.png");
+  if (!fs.existsSync(raw)) return;
+  const crop = { left: 480, top: 520, size: 900 }; // head bounding box in the original
+  const px = 256;
+  const scale = px / crop.size;
+  const { w, h } = pngSize(raw);
+  const html = `<!doctype html><html><body style="margin:0;width:${px}px;height:${px}px;overflow:hidden">
+    <img src="file:///${raw.replace(/\\/g, "/")}" style="position:absolute;width:${Math.round(w * scale)}px;height:${Math.round(h * scale)}px;left:${-Math.round(crop.left * scale)}px;top:${-Math.round(crop.top * scale)}px">
+  </body></html>`;
+  const out = path.join(ROOT, "ui", "tray.png");
+  screenshot(html, px, px, out);
+  console.log(`✅ ui/tray.png  (${px}x${px} head crop for the system tray)`);
+}
+
 if (process.argv.includes("--self-test")) {
   selfTest();
 } else {
@@ -130,4 +146,5 @@ if (process.argv.includes("--self-test")) {
     console.error(`then rerun: node scripts/brand.js`);
     process.exit(1);
   }
+  makeTrayIcon();
 }
