@@ -434,3 +434,37 @@ test("receipt chain: intact after real proxy runs, breaks on reorder", async () 
   fs.writeFileSync(file, backup, "utf8"); // restore
   assert.ok(after.chain_breaks.length >= 1, "reordering detected as chain break");
 });
+
+test("pr comment: evidence markdown from a card", async () => {
+  const { buildPrComment, findCard } = await import("../pr.js");
+  const card = findCard(TMP, "test-session-1")!;
+  assert.ok(card, "card found by session prefix");
+  const md = buildPrComment(card);
+  assert.ok(md.includes("Foreman session evidence"), "has header");
+  assert.ok(md.includes("CRITICAL"), "risk level present");
+  assert.ok(md.includes("UNVERIFIED"), "unverified claims surfaced");
+  assert.ok(md.includes("mass_rewrite"), "findings listed");
+  assert.ok(md.includes("app.py"), "files table present");
+});
+
+test("generic ingest: any tool becomes an adapter via JSONL", async () => {
+  const events = [
+    { agent: "windsurf", session: "wind-1", cwd: TMP, kind: "command", command: "npm test", ok: true },
+    { agent: "windsurf", session: "wind-1", cwd: TMP, kind: "file", file: "src/big.ts", lines_before: 120, lines_after: 10, content: "tiny" },
+    { agent: "windsurf", session: "wind-1", cwd: TMP, kind: "end", message: "Refactor done, all tests pass." },
+  ].map((e) => JSON.stringify(e)).join("\n");
+  await new Promise<void>((resolve) => {
+    const p = spawn(process.execPath, [CLI, "ingest"], { env: { ...process.env, FOREMAN_HOME: TMP } });
+    p.stdin.write(events);
+    p.stdin.end();
+    p.on("exit", () => resolve());
+  });
+  const { buildCards } = await import("../cards.js");
+  const card = buildCards().find((c) => c.session === "wind-1")!;
+  assert.ok(card, "ingested card exists");
+  assert.equal(card.agent, "windsurf");
+  assert.equal(card.open, false);
+  assert.ok(card.findings.some((f) => f.rule === "mass_rewrite"), "mass rewrite detected from ingested lines");
+  assert.ok(card.claims.length >= 1, "claims extracted from end message");
+  assert.equal(card.commands[0].verification, true);
+});

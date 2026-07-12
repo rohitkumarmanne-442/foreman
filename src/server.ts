@@ -7,6 +7,7 @@ import { readEvents } from "./journal.js";
 import { setReview } from "./reviews.js";
 import { verifyReceipt, type ReceiptBody } from "./mcp/receipts.js";
 import { toReceiptBody } from "./verifyall.js";
+import { buildPrComment } from "./pr.js";
 import { DEFAULT_PORT, FOREMAN_HOME } from "./paths.js";
 import { loadConfig } from "./config.js";
 import type { McpCallData } from "./types.js";
@@ -51,6 +52,11 @@ export function startServer(port = DEFAULT_PORT): http.Server {
         send(200, JSON.stringify(buildCards()));
       } else if (url.pathname === "/api/receipts") {
         send(200, JSON.stringify(receiptRows()));
+      } else if (url.pathname === "/api/pr-comment") {
+        const session = url.searchParams.get("session") ?? "";
+        const card = buildCards().find((c) => c.session === session);
+        if (!card) { send(404, JSON.stringify({ error: "session not found" })); return; }
+        send(200, buildPrComment(card), "text/markdown; charset=utf-8");
       } else if (url.pathname === "/api/review" && req.method === "POST") {
         let body = "";
         let overflow = false;

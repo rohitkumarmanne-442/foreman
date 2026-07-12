@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
 import fs from "node:fs";
+import path from "node:path";
 import {
   handleClaudeCodeHook,
   installClaudeCodeHooks,
@@ -32,6 +33,10 @@ const HELP = `
     foreman brief [path]         print outstanding human flags for a repo (agents read this;
                                  injected automatically into Claude Code sessions)
     foreman gate [--level high]  exit 1 if unapproved risky sessions exist — for CI/pre-push
+    foreman pr [--session id] [--pr N] [--print]
+                                 post a session-evidence comment on the PR (gh), or --print it
+    foreman tray                 system-tray inbox with critical-card balloons (Windows)
+    foreman ingest               journal normalized JSON events from ANY tool (stdin)
 
   MCP ATTESTATION
     foreman wrap --name <srv> -- <command...>
@@ -59,19 +64,64 @@ function arg(flag: string): string | undefined {
   return i >= 0 ? process.argv[i + 1] : undefined;
 }
 
+function pkgRoot(): string {
+  const here = new URL(import.meta.url).pathname;
+  const decoded = decodeURIComponent(here.replace(/^\/([A-Za-z]:)/, "$1"));
+  return path.dirname(path.dirname(decoded)); // dist/cli.js -> package root
+}
+
 async function main(): Promise<void> {
   const cmd = process.argv[2];
   const isGlobal = process.argv.includes("--global");
 
-  if (cmd === "hook") {
-    const agent = process.argv[3];
+  if (cmd === "hook" || cmd === "ingest") {
+    const agent = cmd === "ingest" ? "generic" : process.argv[3];
     if (agent === "claude-code") await handleClaudeCodeHook();
     else if (agent === "cursor") await handleCursorHook();
     else if (agent === "codex") {
       const { handleCodexNotify } = await import("./hooks/codex.js");
       await handleCodexNotify();
+    } else if (agent === "generic") {
+      const { handleGenericHook } = await import("./hooks/generic.js");
+      await handleGenericHook();
     }
     return; // always exit 0 — hooks must never break the agent
+  }
+
+  if (cmd === "pr") {
+    const { buildPrComment, findCard, postToGitHub } = await import("./pr.js");
+    const repo = arg("--repo") ?? process.cwd();
+    const card = findCard(repo, arg("--session"));
+    if (!card) {
+      console.error("No session found for this repo. Run your agent first (or pass --session <id>).");
+      process.exit(1);
+    }
+    const comment = buildPrComment(card);
+    if (process.argv.includes("--print")) {
+      console.log(comment);
+      return;
+    }
+    try {
+      const out = postToGitHub(repo, comment, arg("--pr"));
+      console.log(`✅ Evidence comment posted${out ? ` → ${out}` : ""}`);
+      console.log(`   Session ${card.session.slice(0, 12)} · ${card.level.toUpperCase()} ${card.score} · review: ${card.review}`);
+    } catch (err) {
+      console.error("Could not post via the GitHub CLI (`gh pr comment`).");
+      console.error("Is gh installed + authenticated, and does this branch have an open PR?");
+      console.error("Tip: `foreman pr --print` prints the comment so you can paste it anywhere.");
+      process.exit(1);
+    }
+    return;
+  }
+
+  if (cmd === "tray") {
+    const { runTray } = await import("./tray.js");
+    const iconPng = path.join(pkgRoot(), "ui", "tray.png");
+    runTray(
+      Number(arg("--port") ?? process.env.FOREMAN_PORT ?? loadConfig().port),
+      fs.existsSync(iconPng) ? iconPng : undefined
+    );
+    return;
   }
 
   if (cmd === "run") {

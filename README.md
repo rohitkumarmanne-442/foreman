@@ -7,7 +7,7 @@
 *Your agents say "done." Foreman asks to see the receipts.*
 
 [![npm](https://img.shields.io/npm/v/foremanjs?color=5b8cff&label=npm)](https://www.npmjs.com/package/foremanjs)
-[![tests](https://img.shields.io/badge/tests-19%2F19_passing-3ddc97)](https://github.com/rohitkumarmanne-442/foreman/blob/main/src/test/smoke.test.ts)
+[![tests](https://img.shields.io/badge/tests-21%2F21_passing-3ddc97)](https://github.com/rohitkumarmanne-442/foreman/blob/main/src/test/smoke.test.ts)
 [![node](https://img.shields.io/badge/node-%E2%89%A518-informational)](https://nodejs.org)
 [![works with](https://img.shields.io/badge/works_with-any_agent-ff9f43)](#connect-your-agent)
 [![local-first](https://img.shields.io/badge/local--first-no_telemetry-8b93a7)](#local-first-by-design)
@@ -42,7 +42,7 @@ Foreman is an observer, so the only numbers that matter are the ones it costs yo
 - **0 tokens.** Foreman never touches your prompts or your model bill. (One exception, and you opt into it: flagged-session notes are injected as context — that's the point.)
 - **~120 ms per hook event** — median of 15 cold runs on an ordinary Windows laptop, and nearly all of it is Node process startup, not work. Hooks journal and exit; they cannot block, break, or slow your agent's reasoning.
 - **What the rules catch:** 21 destructive-command patterns, 14 secret formats, mass rewrites (both whole-file and single-edit), sensitive paths, failed-then-claimed-success, and MCP tool-definition drift. Every check runs on the record of what the agent *did* — never on vibes.
-- **19/19 end-to-end tests**, including: a tampered receipt failing signature verification, a reordered journal breaking the hash chain, a forged team pack being rejected, and a real headless session producing a critical card.
+- **21/21 end-to-end tests**, including: a tampered receipt failing signature verification, a reordered journal breaking the hash chain, a forged team pack being rejected, and a real headless session producing a critical card.
 
 No benchmark theater: an observer can't make your agent faster or cheaper. It makes *you* faster — you spend ten minutes on the dangerous session and ten seconds on the README fix, instead of equal time skimming both.
 
@@ -123,6 +123,20 @@ No hooks needed: Foreman diffs the git working tree and journals every change an
 </details>
 
 <details>
+<summary><b>Your own tool / an agent Foreman doesn't know yet</b> — the 20-line adapter</summary>
+
+Anything that can emit JSON is a first-class adapter. Pipe normalized events to `foreman ingest` (one object, an array, or JSONL):
+
+```bash
+echo '{"agent":"mytool","session":"s1","kind":"command","command":"npm test","ok":true}' | foreman ingest
+echo '{"agent":"mytool","session":"s1","kind":"file","file":"src/a.ts","lines_before":120,"lines_after":10}' | foreman ingest
+echo '{"agent":"mytool","session":"s1","kind":"end","message":"All tests pass."}' | foreman ingest
+```
+
+Three kinds — `command`, `file`, `end` — and Foreman derives everything else: risk scoring, claims-vs-evidence, diffs (send `content` / `edits`), the works. As agents ship native hook APIs, a first-party adapter is just a translation layer onto this schema — PRs welcome.
+</details>
+
+<details>
 <summary><b>MCP servers</b> — signed receipts + rug-pull detection</summary>
 
 In your agent's MCP config, prefix the server command:
@@ -163,6 +177,26 @@ foreman gate --level critical   # only block on critical
 
 Drop it in a pre-push hook or CI job: **agent-written changes don't ship until a human approved the sessions that produced them.** It prints exactly which sessions are blocking and ignores demo data.
 
+## Put the evidence on the PR
+
+Reviewers shouldn't have to take "the agent tested this" on faith. One command turns a session into a PR comment with the receipts — risk score, claims vs evidence, findings, files, verification commands:
+
+```bash
+foreman pr                    # comment on the current branch's PR (via gh)
+foreman pr --pr 42            # a specific PR
+foreman pr --print            # print the markdown — paste it anywhere (GitLab, email…)
+```
+
+The inbox has the same thing as a **📋 PR comment** button on every card. Approved cards say so; flagged cards carry your note. Your PR reviews start from evidence, not vibes.
+
+## Live in your tray
+
+```bash
+foreman tray                  # Windows — macOS/Linux menu-bar builds on the roadmap
+```
+
+Runs the inbox server headless with a system-tray icon: the tooltip live-counts sessions needing review, a balloon pops when a **new critical card** appears, left-click opens the inbox, and Exit shuts it all down. Zero dependencies — it's a WinForms NotifyIcon.
+
 ## MCP attestation: make tool calls provable
 
 MCP's `tool_call → tool_result` cycle runs on an honor system — nothing proves a server did what it claims, and nothing notices when a server quietly *changes what its tools say they do*. Wrapped servers get:
@@ -192,6 +226,9 @@ Exports your review cards for this repo as an **ed25519-signed pack** and import
 | `foreman watch [path]` | watch a repo continuously — any IDE, any tool |
 | `foreman brief [path]` | print outstanding human flags (agents read this) |
 | `foreman gate [--level high\|critical]` | exit 1 while unapproved risky sessions exist |
+| `foreman pr [--pr N] [--session id] [--print]` | post a session-evidence comment on the PR |
+| `foreman tray` | system-tray inbox with critical-card balloons (Windows) |
+| `foreman ingest` | journal normalized JSON events from any tool (stdin) |
 | `foreman wrap --name <srv> -- <cmd…>` | attest an MCP server |
 | `foreman trust <srv>` | re-baseline a server's tool definitions |
 | `foreman verify` | verify every signature + chain continuity |
@@ -300,9 +337,11 @@ Zero runtime dependencies — TypeScript, Node's stdlib, and one static HTML fil
 - [x] Approve/flag workflow, diff viewer, risk engine, audit reports
 - [x] Feedback loop — flag notes injected into the agent's next session
 - [x] Hash-linked receipt chains · team packs · CI gate · critical-card notifications
-- [ ] Native hook adapters as more agents ship hook APIs
-- [ ] Card actions that write back to PRs (approve → PR comment with evidence)
-- [ ] Menu-bar tray for the inbox
+- [x] PR write-back — `foreman pr` posts the session's evidence on the pull request
+- [x] System-tray inbox (`foreman tray`, Windows) with critical-card balloons
+- [x] Generic adapter API (`foreman ingest`) — any tool becomes an adapter in 20 lines
+- [ ] Native hook adapters as more agents ship hook APIs (built on `foreman ingest`)
+- [ ] macOS/Linux menu-bar builds
 
 ## License
 

@@ -217,6 +217,11 @@ const WHY={
 };
 
 function toast(msg){const t=document.createElement('div');t.className='toast';t.textContent=msg;$('toasts').appendChild(t);setTimeout(()=>t.remove(),2600);}
+async function copyPrComment(session){
+  const md=await fetch('/api/pr-comment?session='+encodeURIComponent(session)).then(r=>r.text());
+  await navigator.clipboard.writeText(md);
+  toast('📋 Evidence comment copied — paste it on your PR (or use: foreman pr)');
+}
 function copyCmd(text,btn){navigator.clipboard.writeText(text).then(()=>{toast('Copied: '+text);if(btn)btn.textContent='copied!';setTimeout(()=>{if(btn)btn.textContent='copy'},1500);});}
 function toggleHelp(){$('helpmodal').classList.toggle('show');}
 
@@ -371,6 +376,7 @@ function renderDetail(){
     <div class="actions">
       <button class="btn approve ${c.review==='approved'?'active':''}" onclick="review('${esc(c.session)}','${c.review==='approved'?'pending':'approved'}')">✓ ${c.review==='approved'?'Approved':'Approve'}</button>
       <button class="btn flag ${c.review==='flagged'?'active':''}" onclick="${c.review==='flagged'?`review('${esc(c.session)}','pending')`:`openFlag('${esc(c.session)}')`}">⚑ ${c.review==='flagged'?'Flagged':'Flag'}</button>
+      <button class="btn" onclick="copyPrComment('${esc(c.session)}')" title="Markdown evidence comment for your PR">📋 PR comment</button>
       <span class="kbd-hint"><kbd>a</kbd> / <kbd>f</kbd></span>
     </div>
     ${c.review==='flagged'&&c.review_note?`<div class="finding s4" style="margin-bottom:20px"><div class="frow"><span class="rule">your note</span><span>“${esc(c.review_note)}” <span class="dim">— fed to the agent's next session in this repo</span></span></div></div>`:''}
