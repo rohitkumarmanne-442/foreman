@@ -1,82 +1,110 @@
+<div align="center">
+
 # 🧑‍🏭 Foreman
 
 **The review inbox for your AI workforce.**
 
-You let AI agents write your code. Foreman makes sure you can actually check their work — before it hurts you.
+*Your agents say "done." Foreman asks to see the receipts.*
 
-```bash
-npm install -g foremanjs
-foreman demo && foreman ui     # see it working in 30 seconds
-```
+[![npm](https://img.shields.io/npm/v/foremanjs?color=5b8cff&label=npm)](https://www.npmjs.com/package/foremanjs)
+[![tests](https://img.shields.io/badge/tests-19%2F19_passing-3ddc97)](https://github.com/rohitkumarmanne-442/foreman/blob/main/src/test/smoke.test.ts)
+[![node](https://img.shields.io/badge/node-%E2%89%A518-informational)](https://nodejs.org)
+[![works with](https://img.shields.io/badge/works_with-any_agent-ff9f43)](#connect-your-agent)
+[![local-first](https://img.shields.io/badge/local--first-no_telemetry-8b93a7)](#local-first-by-design)
+[![license](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
 
-Works with **Claude Code**, **Cursor**, and — through universal watch mode — **any IDE or agent that edits files** (Windsurf, Copilot, JetBrains AI, Codex, …). 100% local. No account. No telemetry. MIT.
+</div>
 
 ---
 
-## The problem
+You let AI agents write your code. They produce more change than any human can honestly review, so you skim, you rubber-stamp — and one day an agent rewrites an 869-line production app down to 97 lines, announces *"everything works!"*, and force-pushes it while you're looking the other way.
 
-AI agents produce more change than humans can responsibly review. So we skim. We rubber-stamp. And sometimes an agent rewrites an 869-line production app down to 97 lines, says *"everything works!"*, and merges it while we're looking the other way. (That happened to me. That's why Foreman exists.)
+That happened to me. Foreman exists so it never happens silently again.
 
-Agents also **claim** things. *"All tests pass."* Did it run a single test? You'd have to scroll the whole transcript to know. Nobody does.
+![The Foreman inbox: a critical session with a force push, an 89% file rewrite, and an unverified success claim — with the reviewer's note that gets fed back to the agent](assets/inbox.png)
 
-## What Foreman does
+## What just happened, in one screen
 
-Foreman quietly records what your agents *actually did* — files touched, commands run, what they claimed at the end — and turns every session into a **review card** in a local inbox, **ranked by risk**:
+The agent above ended its session with *"Everything works and the checkout flow is fully functional. Done!"* Foreman's card tells a different story:
 
-| On the card | What it tells you |
+| The agent's version | What Foreman recorded |
 |---|---|
-| 🎯 **Risk score 0–100** | Spend 10 minutes on the dangerous session, 10 seconds on the README fix |
-| ⚠️ **Claims vs evidence** | The agent said *"it works"* — Foreman checked whether it ever ran anything that could prove it. If not: **UNVERIFIED** |
-| 📁 **Files + diffs** | Before → after line counts, click any file for the red/green diff |
-| 🔍 **Findings** | Destructive commands, mass rewrites, hardcoded secrets, sensitive paths — each with a plain-English "why this matters" |
-| 🧾 **Terminal history** | Every command, pass/fail, with verification commands (tests, builds) badged |
+| "Everything works" | **ran zero verification commands** — the claim is unverified ❓ |
+| "simplified app.py" | rewrote **869 → 97 lines** (89% of the file deleted) |
+| *(not mentioned)* | `git push --force origin main` |
 
-You work the inbox like email: **✓ Approve** what's safe, **⚑ Flag** what isn't. Inbox zero = every AI change had human eyes on it.
+Every agent session becomes a **review card**, ranked by risk, in a local inbox you work like email: **✓ approve** what's safe, **⚑ flag** what isn't — with a note the agent reads next session. Inbox zero means every AI change had human eyes on it.
 
-## Install & connect your agent
+## Numbers, honestly
 
-**Step 1 — install** (needs Node 18+):
+Foreman is an observer, so the only numbers that matter are the ones it costs you and the ones it catches:
+
+- **0 tokens.** Foreman never touches your prompts or your model bill. (One exception, and you opt into it: flagged-session notes are injected as context — that's the point.)
+- **~120 ms per hook event** — median of 15 cold runs on an ordinary Windows laptop, and nearly all of it is Node process startup, not work. Hooks journal and exit; they cannot block, break, or slow your agent's reasoning.
+- **What the rules catch:** 21 destructive-command patterns, 14 secret formats, mass rewrites (both whole-file and single-edit), sensitive paths, failed-then-claimed-success, and MCP tool-definition drift. Every check runs on the record of what the agent *did* — never on vibes.
+- **19/19 end-to-end tests**, including: a tampered receipt failing signature verification, a reordered journal breaking the hash chain, a forged team pack being rejected, and a real headless session producing a critical card.
+
+No benchmark theater: an observer can't make your agent faster or cheaper. It makes *you* faster — you spend ten minutes on the dangerous session and ten seconds on the README fix, instead of equal time skimming both.
+
+## How it works
+
+```text
+Claude Code hooks ─┐
+Cursor hooks ──────┤
+Codex notify ──────┤                         ┌─→ review cards, risk-ranked → inbox (foreman ui)
+foreman run ───────┼─→ ~/.foreman/*.jsonl ───┼─→ flags & notes → back into the agent (foreman brief)
+foreman watch ─────┤    append-only journal  ├─→ CI gate (foreman gate)
+foreman wrap ──────┘                         └─→ audit report (foreman report)
+     └─ ed25519-signed, hash-chained receipts + tool fingerprints
+```
+
+No daemon, no database, no account. The journal is plain JSONL you can grep; the inbox is a local page that reads it live; receipts verify independently with `foreman verify`.
+
+## Install
 
 ```bash
 npm install -g foremanjs
+foreman demo && foreman ui      # a populated inbox in 30 seconds
 ```
 
-**Step 2 — connect the agent you use:**
+Requires Node 18+. Remove the sample data anytime with `foreman demo --clear`.
+
+## Connect your agent
 
 <details>
-<summary><b>Claude Code</b></summary>
+<summary><b>Claude Code</b> — hooks, richest data</summary>
 
 ```bash
 cd your-project
 foreman init
 ```
 
-That's it. This adds Foreman hooks to `.claude/settings.json`. Every *new* Claude Code session in this project now files a review card (richest data: diffs, commands, claims). Use `foreman init --global` to cover every project at once.
+Adds hooks to `.claude/settings.json`. Every new session files a card with diffs, commands, claims — and receives your outstanding flags as context when it starts. `foreman init --global` covers every repo at once; `--agent claude` installs for Claude Code only.
 </details>
 
 <details>
-<summary><b>Cursor</b></summary>
+<summary><b>Cursor</b> — hooks (Cursor 1.7+)</summary>
 
 ```bash
 cd your-project
 foreman init
 ```
 
-This adds Foreman to `.cursor/hooks.json` (Cursor 1.7+). Shell commands, file edits, MCP calls, and session ends are all captured. Use `--global` for all projects, or `foreman init --agent cursor` to install for Cursor only.
+Adds Foreman to `.cursor/hooks.json`: shell commands, file edits, MCP calls, and session ends are captured per the [Cursor hooks API](https://cursor.com/docs/hooks). `--agent cursor` installs for Cursor only.
 </details>
 
 <details>
 <summary><b>Codex CLI, Gemini CLI, Copilot CLI, aider — any terminal agent</b></summary>
 
-Launch the agent through Foreman — its TTY is untouched, and the review card closes the moment it exits:
+Launch the agent through Foreman. Its TTY is untouched; the card closes when it exits:
 
 ```bash
 foreman run --name codex -- codex
 foreman run --name gemini -- gemini
-foreman run --name copilot -- copilot
+foreman run --name aider -- aider
 ```
 
-**Codex bonus** — add to `~/.codex/config.toml` to also capture what Codex *claims* at the end of each turn (feeds the claims-vs-evidence check):
+**Codex bonus** — capture what Codex *claims* at the end of each turn (feeds claims-vs-evidence). In `~/.codex/config.toml`:
 
 ```toml
 notify = ["foreman", "hook", "codex"]
@@ -84,47 +112,20 @@ notify = ["foreman", "hook", "codex"]
 </details>
 
 <details>
-<summary><b>Windsurf, JetBrains AI, or any IDE without hooks</b></summary>
+<summary><b>Windsurf, JetBrains AI, or anything else</b> — universal watch mode</summary>
 
 ```bash
 cd your-project
 foreman watch
 ```
 
-Universal mode doesn't need hooks: it watches your git working tree and journals every change any tool makes — mass rewrites, secrets, and sensitive paths are all caught. Press `Ctrl+C` when the agent is done to close the card. (Needs the project to be a git repo.)
+No hooks needed: Foreman diffs the git working tree and journals every change any tool makes. Mass rewrites, secrets, and sensitive paths are all caught; `Ctrl+C` closes the card. Needs the project to be a git repo.
 </details>
 
-**Step 3 — open your inbox:**
+<details>
+<summary><b>MCP servers</b> — signed receipts + rug-pull detection</summary>
 
-```bash
-foreman ui        # → http://127.0.0.1:4517
-```
-
-Keep it open while you work — cards appear and update live. Keyboard: `j`/`k` navigate, `a` approve, `f` flag, `/` search, `?` help.
-
-## The feedback loop: flagging teaches the agent
-
-Approving is half the job — **flagging closes the loop**. When you flag a session you can attach a note (*"Don't force-push. The rewrite of app.py deleted working code."*). From then on:
-
-- **Claude Code** — every new session in that repo automatically receives your flags and notes as context (via the SessionStart hook). The agent starts work already knowing what the human rejected and why.
-- **Any other agent** — run `foreman brief` in the repo and paste/pipe the output, or point your rules file (`.cursorrules`, `AGENTS.md`, …) at it.
-
-Unflag (or approve) the session and the brief goes silent. Your review stops being a graveyard of vetoes and becomes training signal.
-
-## Gate your CI on human review
-
-```bash
-foreman gate                 # exit 1 if any unapproved high/critical session exists here
-foreman gate --level critical
-```
-
-Drop it in a pre-push hook or CI job: **agent-written changes can't ship until a human approved the session that produced them.** The gate ignores demo data and other repos, and prints exactly which sessions are blocking.
-
-## MCP attestation: make tool calls provable
-
-MCP's `tool_call → tool_result` cycle runs on an honor system: nothing proves a server did what it claims, and nothing notices when a server quietly *changes what its tools say they do* (the classic rug pull that smuggles prompt injections into your agent).
-
-Wrap any stdio MCP server — in your agent's MCP config, prefix the command:
+In your agent's MCP config, prefix the server command:
 
 ```jsonc
 // before
@@ -133,123 +134,175 @@ Wrap any stdio MCP server — in your agent's MCP config, prefix the command:
 { "command": "foreman", "args": ["wrap", "--name", "github", "--", "npx", "@someone/github-mcp"] }
 ```
 
-You get:
+See [MCP attestation](#mcp-attestation-make-tool-calls-provable) for what you get.
+</details>
 
-- **Signed receipts** — every `tools/call` is journaled with SHA-256 hashes of params and result, latency and outcome, **ed25519-signed** by a key that never leaves your machine.
-- **Hash-linked chains** — each receipt commits to the hash of the one before it. Editing a receipt breaks its signature; **deleting or reordering history breaks the chain**. `foreman verify` checks both and tells you exactly where history was altered.
-- **Rug-pull detection** — tool definitions are fingerprinted on first use. If a server's tool descriptions ever change (*"adds two numbers"* → *"adds two numbers. IGNORE PREVIOUS INSTRUCTIONS…"*), a finding lands in your inbox. Re-accept intentional updates with `foreman trust <server>`.
+Then open the inbox and leave it open — cards appear live:
 
-The proxy passes every byte through untouched (JSON-RPC batches included) — your agent and the server never know it's there.
+```bash
+foreman ui        # → http://127.0.0.1:4517
+```
+
+Keyboard-first: `j`/`k` navigate · `a` approve · `f` flag · `/` search · `?` help.
+
+## The feedback loop: flagging teaches the agent
+
+Approving is half the job. **Flagging closes the loop.** Flag a session and attach a note — *"Never force-push. Restore app.py and make surgical edits."* From then on:
+
+- **Claude Code** — every new session in that repo receives your flags, notes, and the exact findings as context before it starts work (SessionStart hook).
+- **Everything else** — `foreman brief` prints the same feedback; pipe it, paste it, or point your rules file at it.
+
+Approve or unflag, and the brief goes silent. Your reviews stop being a graveyard of vetoes and become training signal.
+
+## Gate your CI on human review
+
+```bash
+foreman gate                    # exit 1 while unapproved high/critical sessions exist here
+foreman gate --level critical   # only block on critical
+```
+
+Drop it in a pre-push hook or CI job: **agent-written changes don't ship until a human approved the sessions that produced them.** It prints exactly which sessions are blocking and ignores demo data.
+
+## MCP attestation: make tool calls provable
+
+MCP's `tool_call → tool_result` cycle runs on an honor system — nothing proves a server did what it claims, and nothing notices when a server quietly *changes what its tools say they do*. Wrapped servers get:
+
+- **Signed receipts** — every `tools/call` journaled with SHA-256 hashes of params and result, latency, outcome — **ed25519-signed** by a key that never leaves your machine.
+- **Hash-linked chains** — each receipt commits to the hash of the one before it. Editing a receipt breaks its signature; **deleting or reordering history breaks the chain.** `foreman verify` checks both and points at the exact receipt where history was altered.
+- **Rug-pull detection** — tool definitions are fingerprinted on first use. When *"adds two numbers"* becomes *"adds two numbers. IGNORE PREVIOUS INSTRUCTIONS…"*, a finding lands in your inbox. Re-accept intentional updates with `foreman trust <server>`.
+
+The proxy passes every byte through untouched, JSON-RPC batches included. Your agent and the server never know it's there.
 
 ## Team mode: git is the sync layer
 
-Your teammates run agents too. See their sessions without any server:
-
 ```bash
-foreman team sync     # inside the shared repo
+foreman team sync
 git add .foreman-team && git commit -m "foreman packs" && git push
 ```
 
-`team sync` exports your review cards for this repo into `.foreman-team/<your-key>.json` — **ed25519-signed** so provenance is verifiable — and imports every teammate pack it finds there (packs that fail signature verification are rejected). Imported cards appear in your inbox with a 👥 owner badge. Review status stays local: you approve for you.
+Exports your review cards for this repo as an **ed25519-signed pack** and imports every teammate pack it finds — packs that fail signature verification are rejected outright. Teammate cards show a 👥 owner badge in your inbox. Review authority stays local: you approve for you. No server, no accounts; the repo you already share does the syncing.
 
-## All commands
+## Commands
 
-```text
-foreman init [--agent claude|cursor|all] [--global]   install hooks
-foreman run [--name codex] -- <agent command…>        supervise any terminal agent
-foreman watch [path] [--interval ms]                  watch a repo (any IDE/agent)
-foreman ui [--port 4517]                              open the review inbox
-foreman brief [path]                                  print human flags for a repo (agents read this)
-foreman gate [--level high|critical] [--repo path]    exit 1 if unapproved risky sessions exist
-foreman team sync                                     exchange signed card packs via the repo
-foreman status                                        one-screen summary in the terminal
-foreman report [--out audit.md]                       markdown audit report of all sessions
-foreman demo [--clear]                                seed / remove showcase data
-foreman wrap --name <srv> -- <command…>               attest an MCP server
-foreman trust <srv>                                   re-baseline a server's tools
-foreman verify                                        verify signatures + chain continuity
-foreman config                                        show config path + active settings
-foreman uninstall [--global]                          remove hooks (journal stays)
-```
+| Command | What it does |
+|---|---|
+| `foreman init [--agent claude\|cursor\|all] [--global]` | install hooks for this repo (or everywhere) |
+| `foreman ui [--port 4517]` | open the review inbox |
+| `foreman run [--name X] -- <cmd…>` | supervise any terminal agent for one session |
+| `foreman watch [path]` | watch a repo continuously — any IDE, any tool |
+| `foreman brief [path]` | print outstanding human flags (agents read this) |
+| `foreman gate [--level high\|critical]` | exit 1 while unapproved risky sessions exist |
+| `foreman wrap --name <srv> -- <cmd…>` | attest an MCP server |
+| `foreman trust <srv>` | re-baseline a server's tool definitions |
+| `foreman verify` | verify every signature + chain continuity |
+| `foreman team sync` | exchange signed card packs via the repo |
+| `foreman report [--out audit.md]` | markdown audit of every session |
+| `foreman status` | one-screen summary in the terminal |
+| `foreman demo [--clear]` | seed / remove showcase data |
+| `foreman config` | show config path + active settings |
+| `foreman uninstall [--global]` | remove hooks (your journal stays) |
 
-## Who uses Foreman for what
-
-- **The solo dev with five agents** — risk-ranked inbox instead of rubber-stamping; the flag→brief loop stops repeat mistakes.
-- **The team lead** — `foreman team sync` shows every teammate agent's work; `foreman report` turns a sprint of AI changes into an audit document.
-- **The security-conscious org** — MCP receipts + hash chains give a tamper-evident record of what tools actually did; rug-pull detection guards the MCP supply chain.
-- **The CI pipeline** — `foreman gate` blocks merges until a human approved the sessions behind the diff.
-- **The mentor** — point a junior's inbox at their agent sessions; "claims vs evidence" teaches why *"it works"* needs proof.
-
-## Tune it to your codebase
-
-Create `~/.foreman/config.json` (see `foreman config` for the path and live values):
-
-```jsonc
-{
-  "port": 4517,
-  "ignore": ["node_modules/", "dist/", "*.lock", "generated/"],   // paths to never track
-  "disable_rules": ["untested_change"],                            // rules you don't want
-  "mass_rewrite_min_lines": 50,   // smallest file that can count as a mass rewrite
-  "mass_rewrite_ratio": 0.4,      // flag when new content < 40% of the original
-  "notify_command": "powershell -c \"[console]::beep(880,300)\""   // optional: runs on NEW critical cards
-  // notify_command gets env vars: FOREMAN_SESSION, FOREMAN_LEVEL, FOREMAN_SCORE, FOREMAN_REPO
-}
-```
-
-### The risk rules
+## The risk rules
 
 | Rule | Severity | Fires when |
 |---|---|---|
 | `destructive_command` | critical | `rm -rf`, force push, `git reset --hard`, `DROP`/`TRUNCATE`, `DELETE` without `WHERE`, `kubectl delete`, `terraform destroy`, … |
-| `mass_rewrite` | critical | a 50+ line file rewritten to <40% of its size (both thresholds configurable) |
-| `secret_in_code` | critical | AWS/Anthropic/Stripe/GitHub/GitLab/Google/Slack/SendGrid/npm keys, private keys, JWTs, hardcoded passwords |
-| `failed_verification` | critical | the agent claimed success but its own checks failed |
+| `mass_rewrite` | critical | a 50+ line file rewritten to <40% of its size — whole-file or single edit (thresholds configurable) |
+| `secret_in_code` | critical | AWS · Anthropic · Stripe · GitHub · GitLab · Google · Slack · SendGrid · npm keys, private keys, JWTs, hardcoded passwords |
+| `failed_verification` | critical | the agent claimed success after its own checks failed |
 | `unverified_claims` | high | the agent claimed success and never ran anything that could prove it |
 | `sensitive_path` | high | `.env`, secrets, auth, migrations, CI workflows, `.ssh`, `.npmrc` touched |
 | `mcp_tool_drift` | high | an MCP server changed its tool definitions vs the trusted baseline |
 | `untested_change` | medium | code changed, nothing was ever executed |
 
-Claim detection is negation-aware — *"tests fail"* and *"should now work"* are never counted as success claims.
+Claim detection is negation-aware: *"tests fail"* and *"should now work"* are never counted as success claims. Findings deduplicate, and a success claim with no code change behind it scores lower (it's probably just Q&A).
+
+## Tune it
+
+`~/.foreman/config.json` (`foreman config` shows the path and live values):
+
+```jsonc
+{
+  "port": 4517,
+  "ignore": ["node_modules/", "dist/", "*.lock", "generated/"],  // never track these paths
+  "disable_rules": ["untested_change"],                           // rules you don't want
+  "mass_rewrite_min_lines": 50,
+  "mass_rewrite_ratio": 0.4,
+  "notify_command": "powershell -c \"[console]::beep(880,300)\""  // runs when a NEW critical card appears
+  // notify_command env: FOREMAN_SESSION, FOREMAN_LEVEL, FOREMAN_SCORE, FOREMAN_REPO
+}
+```
+
+## How Foreman compares
+
+Adjacent tools solve adjacent problems — most teams will want more than one of these:
+
+| | Guardrails<br>(policy engines, sandboxes) | Eval harnesses<br>(agent benchmarks) | Code provenance<br>("git blame for AI") | **Foreman** |
+|---|---|---|---|---|
+| Acts | **before** the action | offline, on test tasks | after commit | **after the action, before you trust it** |
+| Protects against | known-bad operations | regressions in agent quality | unclear attribution | **unreviewed change + unproven claims** |
+| Claims vs evidence | — | — | — | **✓** |
+| Signed record of MCP calls | some proxy identity checks | — | — | **✓ hash-chained receipts** |
+| Feeds human decisions back to the agent | — | — | — | **✓** |
+| Works with any agent | varies | harness-specific | editor-specific | **✓ hooks + run + watch** |
+
+Guardrails constrain the machine. Foreman makes the human faster — review capacity is the bottleneck guardrails don't touch.
+
+## Local-first, by design
+
+- Everything lives in `~/.foreman/` as plain JSONL — greppable, diffable, deletable, yours.
+- The inbox binds to `127.0.0.1` only. No server, no account, no telemetry, no exceptions.
+- Hooks journal and exit `0` in milliseconds, even on internal failure — an agent can never be blocked by Foreman.
 
 ## FAQ
 
-**Does my code leave my machine?** Never. Everything lives in `~/.foreman/` as plain JSONL you can grep. The inbox binds to `127.0.0.1` only. There is no server, no account, no telemetry.
+**Does my code leave my machine?** Never. The only thing that ever leaves is what *you* choose to commit (`foreman team sync` packs) or paste (`foreman report`).
 
-**Will hooks slow down or break my agent?** No. Hooks journal and exit `0` in milliseconds, even on internal failure — an agent can never be blocked by Foreman.
+**Will it slow my agent down?** ~120 ms per hook event, which is Node starting up. Your model does more than that between two tokens.
 
-**Why not just read the agent's own summary?** Because the summary is the agent grading its own homework. Foreman's claims-vs-evidence check exists precisely because "all tests pass" and *ran zero tests* routinely appear in the same session.
+**Why not just read the agent's own summary?** The summary is the agent grading its own homework. "All tests pass" and *ran zero tests* routinely appear in the same session — that's precisely the badge Foreman pins on.
 
-**How is this different from guardrails (Microsoft AGT, NemoClaw…)?** Guardrails constrain the *machine* before it acts. Foreman makes the *human* faster after it acts — review capacity is the bottleneck guardrails don't touch. Use both.
+**Does it block anything?** Not by default — Foreman observes. If you *want* enforcement, `foreman gate` in CI blocks merges until sessions are approved. Observation you trust beats enforcement you disable.
 
-**Can I audit a whole week?** `foreman report --out audit.md` produces a markdown report of every session, claim, and finding — reviews included.
+**What about agents it doesn't know?** `foreman run -- <anything>` and `foreman watch` don't care what the tool is. If it edits files in a git repo, it's covered.
 
-**How do I get rid of the sample data?** `foreman demo --clear`.
+**Can a clever agent fool it?** An agent can't un-run a force push or un-write a 20-line file where 869 lines used to be — the journal records actions, not narratives. Claims-checking is heuristic (regex, negation-aware) and will improve; treat UNVERIFIED as "look closer", not a verdict.
 
-## How it works
+**How do I wipe everything?** `foreman uninstall` in each repo (or `--global`), then delete `~/.foreman/`. Done.
 
-```text
-Claude Code hooks ─┐
-Cursor hooks ──────┤                        ┌─ review cards, risk-ranked ─→ inbox UI (foreman ui)
-                   ├─→ ~/.foreman/*.jsonl ──┤
-foreman watch ─────┤     (event journal)    └─ audit report (foreman report)
-foreman wrap ──────┘
-  └─ ed25519-signed receipts + tool-definition fingerprints (rug-pull detection)
+**Windows? macOS? Linux?** All three. Foreman is developed on Windows, which is usually the one that breaks.
+
+## Uninstall
+
+```bash
+foreman uninstall            # remove hooks from this repo
+foreman uninstall --global   # remove user-level hooks
+npm uninstall -g foremanjs   # remove the CLI
+# your data: delete ~/.foreman/ whenever you like — it's just JSONL
 ```
 
-No daemon, no database. The journal is append-only JSONL; the inbox reads it live; receipts are independently verifiable with `foreman verify`.
+`uninstall` only removes hook entries Foreman itself added; the rest of your settings files are left untouched.
+
+## Development
+
+```bash
+git clone https://github.com/rohitkumarmanne-442/foreman
+cd foreman
+npm install
+npm test        # builds + runs the 19 end-to-end tests
+```
+
+Zero runtime dependencies — TypeScript, Node's stdlib, and one static HTML file for the inbox. The test suite spawns real child processes for hooks, drives a fake MCP server through the proxy, git-inits throwaway repos for the watcher, and forges a team pack to prove it gets rejected. PRs welcome; keep that bar.
 
 ## Roadmap
 
-- [x] Claude Code + Cursor adapters, universal watch mode
-- [x] Approve/flag review workflow, diff viewer, audit reports
-- [x] Feedback loop: flag notes injected into the agent's next session (`foreman brief`)
-- [x] Codex / Gemini / Copilot / any-CLI supervision (`foreman run`) + Codex notify adapter
-- [x] Hash-linked receipt chains — deleting or reordering history is detectable
-- [x] Team mode: signed card packs synced through git
-- [x] CI gate (`foreman gate`) + critical-card notifications (`notify_command`)
+- [x] Claude Code + Cursor + Codex adapters · `foreman run` · universal watch mode
+- [x] Approve/flag workflow, diff viewer, risk engine, audit reports
+- [x] Feedback loop — flag notes injected into the agent's next session
+- [x] Hash-linked receipt chains · team packs · CI gate · critical-card notifications
 - [ ] Native hook adapters as more agents ship hook APIs
 - [ ] Card actions that write back to PRs (approve → PR comment with evidence)
-- [ ] Windows/macOS menu-bar tray for the inbox
+- [ ] Menu-bar tray for the inbox
 
 ## License
 
