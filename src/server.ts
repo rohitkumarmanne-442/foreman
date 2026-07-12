@@ -91,6 +91,13 @@ export function startServer(port = DEFAULT_PORT): http.Server {
       send(500, JSON.stringify({ error: String(err) }));
     }
   });
+  server.on("error", (err: NodeJS.ErrnoException) => {
+    if (err.code === "EADDRINUSE") {
+      console.log(`🧑‍🏭 Foreman is already running on http://127.0.0.1:${port} — using that one.`);
+      process.exit(0);
+    }
+    throw err;
+  });
   server.listen(port, "127.0.0.1");
   startNotifier();
   return server;
