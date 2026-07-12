@@ -4,7 +4,7 @@
 
 **The review inbox for your AI workforce.**
 
-*Your agents say "done." Foreman asks to see the receipts.*
+*Your agents say "done." Foreman says "prove it."*
 
 [![npm](https://img.shields.io/npm/v/foremanjs?color=5b8cff&label=npm)](https://www.npmjs.com/package/foremanjs)
 [![tests](https://img.shields.io/badge/tests-21%2F21_passing-3ddc97)](https://github.com/rohitkumarmanne-442/foreman/blob/main/src/test/smoke.test.ts)
