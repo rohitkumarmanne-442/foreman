@@ -17,8 +17,6 @@
 
 ---
 
-<img align="right" width="170" src="assets/brand/logo.png" alt="Foreman mascot thinking: Prove it.">
-
 You let AI agents write your code. They produce more change than any human can honestly review, so you skim, you rubber-stamp — and one day an agent rewrites an 869-line production app down to 97 lines, announces *"everything works!"*, and force-pushes it while you're looking the other way.
 
 That happened to me. Foreman exists so it never happens silently again.
