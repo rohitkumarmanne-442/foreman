@@ -23,6 +23,12 @@ That happened to me. Foreman exists so it never happens silently again.
 
 Foreman's whole personality fits in its thought cloud: **"Prove it."** Every claim your agents make gets checked against what they actually did.
 
+## Eleven seconds of Foreman
+
+![Foreman in action: a critical session is reviewed — findings, the 869→97 diff, flagging with a note the agent will read, and signed MCP receipts](assets/demo.gif)
+
+*What you just watched: a critical card (force push + 89% file rewrite + unverified "everything works"), the click-through diff, the reviewer flagging it with a note **that gets injected into the agent's next session**, and the ed25519-signed MCP receipt log.*
+
 ![The Foreman inbox: a critical session with a force push, an 89% file rewrite, and an unverified success claim — with the reviewer's note that gets fed back to the agent](assets/inbox.png)
 
 ## What just happened, in one screen
