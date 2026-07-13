@@ -247,10 +247,13 @@
   .icard.click:hover{border-color:var(--line2);transform:translateY(-2px)}
   .icard b{font:650 24px var(--mono);font-variant-numeric:tabular-nums;display:block}
   .icard span{font-size:10.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.1em}
-  #map{flex:1;display:none;flex-direction:column;min-height:0;position:relative}
-  #maphead{display:flex;align-items:center;gap:16px;padding:20px 28px 8px;flex-wrap:wrap}
-  #maphead .chips{margin-left:auto}
-  #mapcv{flex:1;min-height:0;cursor:grab}
+  #map{display:flex;flex-direction:column;position:relative;height:60vh;min-height:420px;border:1px solid var(--line);border-radius:16px;background:linear-gradient(180deg,var(--panel2),var(--panel));overflow:hidden;margin-bottom:28px;box-shadow:0 10px 28px rgba(0,0,0,.22)}
+  #maphead{display:flex;align-items:center;gap:16px;padding:16px 20px 6px;flex-wrap:wrap}
+  #mapcv{flex:1;min-height:0;cursor:default}
+  .dtin{background:var(--panel);border:1px solid var(--line);border-radius:9px;color:var(--text);font:12px var(--mono);padding:4px 9px;outline:none;color-scheme:dark}
+  :root[data-theme=light] .dtin{color-scheme:light}
+  .dtin:focus{border-color:var(--accent)}
+  .kdelta{font:600 11px var(--mono);margin-left:8px;vertical-align:middle}
   #maptip{position:absolute;display:none;background:linear-gradient(180deg,var(--panel3),var(--panel2));border:1px solid var(--line2);border-radius:10px;padding:9px 13px;font-size:12px;pointer-events:none;z-index:10;box-shadow:0 10px 30px rgba(0,0,0,.5);max-width:340px}
   #maptip .mono{word-break:break-all}
   #maplegend{position:absolute;bottom:14px;left:28px;display:flex;gap:16px;font-size:11.5px;color:var(--dim);flex-wrap:wrap;pointer-events:none}
@@ -302,8 +305,7 @@
   <div class="tabs">
     <div class="tab active" id="tab-inbox" onclick="showTab('inbox')">Inbox<span class="n" id="n-inbox">0</span></div>
     <div class="tab" id="tab-receipts" onclick="showTab('receipts')">MCP Receipts<span class="n" id="n-receipts">0</span></div>
-    <div class="tab" id="tab-insights" onclick="showTab('insights')">Insights</div>
-    <div class="tab" id="tab-map" onclick="showTab('map')" title="the live map of AI's footprint on your code">🕸 Blast Radius</div>
+    <div class="tab" id="tab-insights" onclick="showTab('insights')">📊 Insights</div>
     <div class="tab" id="tab-uses" onclick="toggleUses()" title="Everything Foreman can do (u)">⚡ Use cases</div>
     <button class="helpbtn" onclick="openPalette()" title="Command palette (Ctrl+K)">⌘</button>
     <button class="helpbtn" onclick="openSettings()" title="Settings">⚙</button>
@@ -322,11 +324,11 @@
   <div id="resizer" title="drag to resize · double-click to collapse the list"></div>
   <div id="detail"></div>
   <div id="receipts"></div>
-  <div id="insights"></div>
+  <div id="insights">
+  <div id="insbody"></div>
   <div id="map">
     <div id="maphead">
-      <div><h2 style="margin:0">Blast Radius</h2><div class="sub" style="margin:2px 0 0">every file your agents touched — size = edit intensity · color = risk · hubs = sessions</div></div>
-      <div class="chips" id="mapchips"></div>
+      <div><h3 style="margin:0">🕸 Blast Radius — AI's live footprint on your code</h3><div class="sub" style="margin:3px 0 0">size = edit intensity · color = risk · hubs = sessions · drag to play, click for evidence</div></div>
     </div>
     <canvas id="mapcv"></canvas>
     <div id="maptip"></div>
@@ -338,6 +340,7 @@
       <span><i style="background:#ff5468;box-shadow:0 0 6px #ff5468"></i>critical file</span>
       <span class="dim">click a file → its sessions · click a hub → the card</span>
     </div>
+  </div>
   </div>
 </main>
 <footer>
@@ -509,15 +512,12 @@ function showTab(t){tab=t;
   $('tab-inbox').classList.toggle('active',t==='inbox');
   $('tab-receipts').classList.toggle('active',t==='receipts');
   $('tab-insights').classList.toggle('active',t==='insights');
-  $('tab-map').classList.toggle('active',t==='map');
   $('listwrap').style.display=t==='inbox'?'flex':'none';
   $('resizer').style.display=t==='inbox'?'block':'none';
   $('detail').style.display=t==='inbox'?'block':'none';
   $('receipts').style.display=t==='receipts'?'block':'none';
   $('insights').style.display=t==='insights'?'block':'none';
-  $('map').style.display=t==='map'?'flex':'none';
-  if(t==='insights')renderInsights();
-  if(t==='map')startMap();else stopMap();
+  if(t==='insights'){renderInsights();startMap();}else stopMap();
 }
 
 // ── Blast Radius: the live map of AI's footprint on your code ──────
@@ -530,8 +530,7 @@ function severityFor(path,set){
 }
 function buildGraph(){
   const real=cards.filter(c=>!c.session.startsWith('demo-'));
-  let set=real.length?real:cards;
-  if(insRange!=='all'){const cut=Date.now()-Number(insRange)*86400000;set=set.filter(c=>+new Date(c.started)>=cut);}
+  const set=insFilter(real.length?real:cards);
   const cv=$('mapcv'),W=cv.clientWidth||1200,H=cv.clientHeight||700;
   const old=new Map(mapNodes.map(n=>[n.key,n]));
   const nodes=[],edges=[],fileIdx=new Map();
@@ -612,8 +611,6 @@ function mapDraw(){
   }
 }
 function startMap(){
-  const chip=(r,l)=>`<div class="chip ${insRange===r?'active':''}" onclick="insRange='${r}';localStorage.setItem('foreman_insights_range',r);buildGraph();document.querySelectorAll('#mapchips .chip').forEach(c=>c.classList.remove('active'));event.target.classList.add('active')">${l}</div>`;
-  $('mapchips').innerHTML=chip('7','7 days')+chip('30','30 days')+chip('90','3 months')+chip('all','All time');
   buildGraph();
   cancelAnimationFrame(mapAnim);
   const loop=()=>{mapTick();mapDraw();mapAnim=requestAnimationFrame(loop);};
@@ -1213,55 +1210,85 @@ function runPal(i){const items=palFiltered();const a=items[i??palIdx];if(!a)retu
 // ── insights ────────────────────────────────────────────────────────
 function goFilter(f,q){showTab('inbox');filter=f;$('search').value=q||'';renderList();}
 let insRange=localStorage.getItem('foreman_insights_range')||'30';
-function setInsRange(r){insRange=r;localStorage.setItem('foreman_insights_range',r);renderInsights();}
+let fmFrom=localStorage.getItem('fm_from')||'',fmTo=localStorage.getItem('fm_to')||'';
+function setInsRange(r){insRange=r;localStorage.setItem('foreman_insights_range',r);renderInsights();buildGraph();}
+function setCustomDates(){
+  fmFrom=$('d_from').value;fmTo=$('d_to').value;
+  localStorage.setItem('fm_from',fmFrom);localStorage.setItem('fm_to',fmTo);
+  setInsRange('custom');
+}
+function insSpan(){
+  const now=Date.now();
+  if(insRange==='custom'){
+    return [fmFrom?+new Date(fmFrom):0, fmTo?+new Date(fmTo)+86399999:now];
+  }
+  if(insRange==='all')return[0,now];
+  return[now-Number(insRange)*86400000,now];
+}
+function insFilter(arr,span){const[f,t]=span||insSpan();return arr.filter(c=>{const x=+new Date(c.started);return x>=f&&x<=t;});}
 
 function insBuckets(set){
-  const out=[];const now=new Date();
+  const out=[];const[f0,t0]=insSpan();
   const mk=(s,e,label)=>({s:+s,e:+e,label,n:0,score:0});
-  if(insRange==='7'||insRange==='30'){
-    const days=insRange==='7'?7:30;
-    for(let i=days-1;i>=0;i--){const d=new Date(now);d.setHours(0,0,0,0);d.setDate(d.getDate()-i);const e=new Date(d);e.setDate(e.getDate()+1);
-      out.push(mk(d,e,insRange==='7'?d.toLocaleDateString(undefined,{weekday:'short'}):String(d.getDate())));}
-  }else if(insRange==='90'){
-    for(let i=12;i>=0;i--){const e=new Date(now);e.setDate(e.getDate()-i*7+1);e.setHours(0,0,0,0);const s=new Date(e);s.setDate(s.getDate()-7);
-      out.push(mk(s,e,`${s.getMonth()+1}/${s.getDate()}`));}
-  }else{
-    const first=set.length?new Date(Math.min(...set.map(c=>+new Date(c.started)))):now;
-    const months=Math.max(1,Math.min(12,(now.getFullYear()-first.getFullYear())*12+now.getMonth()-first.getMonth()+1));
-    for(let i=months-1;i>=0;i--){const s=new Date(now.getFullYear(),now.getMonth()-i,1);const e=new Date(now.getFullYear(),now.getMonth()-i+1,1);
-      out.push(mk(s,e,s.toLocaleDateString(undefined,{month:'short'})));}
+  const from=f0||(set.length?Math.min(...set.map(c=>+new Date(c.started))):t0-30*86400000);
+  const spanDays=Math.max(1,Math.ceil((t0-from)/86400000));
+  const unit=spanDays<=31?'d':spanDays<=150?'w':'m';
+  let cur=new Date(from);cur.setHours(0,0,0,0);
+  if(unit==='w')cur.setDate(cur.getDate()-cur.getDay());
+  if(unit==='m')cur.setDate(1);
+  while(+cur<=t0&&out.length<62){
+    const e=new Date(cur);
+    if(unit==='d')e.setDate(e.getDate()+1);else if(unit==='w')e.setDate(e.getDate()+7);else e.setMonth(e.getMonth()+1);
+    out.push(mk(cur,e,unit==='m'?cur.toLocaleDateString(undefined,{month:'short'}):`${cur.getMonth()+1}/${cur.getDate()}`));
+    cur=e;
   }
   for(const c of set){const t=+new Date(c.started);const b=out.find(x=>t>=x.s&&t<x.e);if(b){b.n++;b.score+=c.score;}}
   return out;
 }
+function kdelta(cur,prev,goodUp){
+  if(!prev&&!cur)return'';
+  if(!prev)return`<span class="kdelta" style="color:var(--dim)">new</span>`;
+  const pct=Math.round((cur-prev)/prev*100);
+  if(!pct)return`<span class="kdelta" style="color:var(--dim)">→</span>`;
+  const up=pct>0,good=goodUp?up:!up;
+  return`<span class="kdelta" style="color:${good?'var(--low)':'var(--critical)'}" title="vs the previous period">${up?'▲':'▼'}${Math.abs(pct)}%</span>`;
+}
 function areaChart(pts){
-  const w=780,h=190,L=42,R=16,B=28,T=14;
+  const w=800,h=210,L=42,R=44,B=30,T=16;
   const max=Math.max(1,...pts.map(p=>p.n));
   const px=i=>L+i*((w-L-R)/Math.max(1,pts.length-1));
   const py=v=>h-B-(v/max)*(h-B-T);
+  const ry=v=>h-B-(v/100)*(h-B-T);
   const line=pts.map((p,i)=>`${i?'L':'M'}${px(i).toFixed(1)},${py(p.n).toFixed(1)}`).join(' ');
   const area=`${line} L${px(pts.length-1).toFixed(1)},${h-B} L${px(0).toFixed(1)},${h-B} Z`;
-  const grid=[.5,1].map(f=>`<line x1="${L}" x2="${w-R}" y1="${py(max*f)}" y2="${py(max*f)}" stroke="rgba(255,255,255,.06)" stroke-dasharray="3 5"/><text x="${L-7}" y="${py(max*f)+4}" text-anchor="end" font-size="10" fill="#5d6579">${Math.round(max*f)}</text>`).join('');
+  const ticks=[...new Set([Math.ceil(max/3),Math.ceil(2*max/3),max])].filter(v=>v>0);
+  const grid=ticks.map(v=>`<line x1="${L}" x2="${w-R}" y1="${py(v)}" y2="${py(v)}" stroke="var(--line)" stroke-dasharray="3 5"/><text x="${L-7}" y="${py(v)+4}" text-anchor="end" font-size="10" fill="var(--faint)">${v}</text>`).join('');
+  const riskPts=pts.map((p,i)=>p.n?`${px(i).toFixed(1)},${ry(Math.round(p.score/p.n)).toFixed(1)}`:null).filter(Boolean);
+  const risk=riskPts.length>1?`<polyline points="${riskPts.join(' ')}" fill="none" stroke="var(--high)" stroke-width="2" stroke-dasharray="5 4" opacity=".85"/>`:'';
+  const raxis=[0,50,100].map(v=>`<text x="${w-R+8}" y="${ry(v)+4}" font-size="9.5" fill="var(--high)" opacity=".75">${v}</text>`).join('');
   const dots=pts.map((p,i)=>{if(!p.n)return '';const avg=Math.round(p.score/p.n);
-    return `<circle cx="${px(i)}" cy="${py(p.n)}" r="4.5" fill="${avg>=70?'#ff5468':avg>=40?'#ffa14a':'#3fe0a0'}" stroke="#0f1421" stroke-width="2"><title>${p.label}: ${p.n} session(s) · avg risk ${avg}</title></circle>`;}).join('');
+    return `<circle cx="${px(i)}" cy="${py(p.n)}" r="4.5" fill="${avg>=70?'#ff5468':avg>=40?'#ffa14a':'#3fe0a0'}" stroke="var(--panel)" stroke-width="2"><title>${p.label}: ${p.n} session(s) · avg risk ${avg}</title></circle>`;}).join('');
   const step=Math.ceil(pts.length/15);
-  const xl=pts.map((p,i)=>i%step?'':`<text x="${px(i)}" y="${h-8}" text-anchor="middle" font-size="10" fill="#5d6579">${p.label}</text>`).join('');
+  const xl=pts.map((p,i)=>i%step?'':`<text x="${px(i)}" y="${h-8}" text-anchor="middle" font-size="10" fill="var(--faint)">${p.label}</text>`).join('');
   return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto;display:block">
     <defs><linearGradient id="ag" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="rgba(106,149,255,.4)"/><stop offset="1" stop-color="rgba(106,149,255,0)"/></linearGradient></defs>
-    ${grid}<path d="${area}" fill="url(#ag)"/><path d="${line}" fill="none" stroke="#6a95ff" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>${dots}${xl}</svg>`;
+    ${grid}<path d="${area}" fill="url(#ag)"/><path d="${line}" fill="none" stroke="#6a95ff" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>${risk}${raxis}${dots}${xl}</svg>
+  <div class="llegend" style="margin-top:6px"><span><i style="background:#6a95ff"></i>sessions (left axis)</span><span><i style="background:var(--high)"></i>avg risk 0–100 (right axis, dashed)</span><span><i style="background:#3fe0a0;border-radius:99px"></i>dot = period risk: green/amber/red</span></div>`;
 }
 function donut(pct,label,color){
   const r=52,c=2*Math.PI*r;const v=pct===null?0:pct;
   return `<svg viewBox="0 0 140 140" style="width:132px;height:132px">
-    <circle cx="70" cy="70" r="${r}" fill="none" stroke="rgba(255,255,255,.06)" stroke-width="13"/>
+    <circle cx="70" cy="70" r="${r}" fill="none" stroke="var(--line)" stroke-width="13"/>
     <circle cx="70" cy="70" r="${r}" fill="none" stroke="${color}" stroke-width="13" stroke-linecap="round" stroke-dasharray="${(c*v/100).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 70 70)"/>
-    <text x="70" y="68" text-anchor="middle" font-size="26" font-weight="800" fill="#ecf0f8" font-family="Consolas,monospace">${pct===null?'—':pct+'%'}</text>
-    <text x="70" y="90" text-anchor="middle" font-size="8.5" fill="#5d6579" letter-spacing="1.5">${label}</text></svg>`;
+    <text x="70" y="68" text-anchor="middle" font-size="26" font-weight="800" fill="var(--text)" font-family="Consolas,monospace">${pct===null?'—':pct+'%'}</text>
+    <text x="70" y="90" text-anchor="middle" font-size="8.5" fill="var(--faint)" letter-spacing="1.5">${label}</text></svg>`;
 }
 function renderInsights(){
   const real=cards.filter(c=>!c.session.startsWith('demo-'));
-  let set=real.length?real:cards;
-  if(insRange!=='all'){const cut=Date.now()-Number(insRange)*86400000;set=set.filter(c=>+new Date(c.started)>=cut);}
+  const all=real.length?real:cards;
+  const[f0,t0]=insSpan();
+  const set=insFilter(all,[f0,t0]);
+  const prevSet=f0?insFilter(all,[f0-(t0-f0),f0-1]):[];
   const pts=insBuckets(set);
   const claimed=set.filter(c=>c.claims.length);
   const verified=claimed.filter(c=>c.verified_claims).length;
@@ -1304,19 +1331,25 @@ function renderInsights(){
 
   const shortPath=p=>{const s=p.replace(/\\/g,'/').split('/');return s.slice(-2).join('/');};
   const rchip=(r,l)=>`<div class="chip ${insRange===r?'active':''}" onclick="setInsRange('${r}')">${l}</div>`;
-  $('insights').innerHTML=`
-    <div style="display:flex;align-items:baseline;gap:16px;flex-wrap:wrap">
+  const pv={sessions:prevSet.length,critical:prevSet.filter(c=>c.level==='critical').length,
+    findings:prevSet.reduce((n,c)=>n+c.findings.length,0),
+    vp:(()=>{const cl=prevSet.filter(c=>c.claims.length);return cl.length?Math.round(cl.filter(c=>c.verified_claims).length/cl.length*100):0;})()};
+  $('insbody').innerHTML=`
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
       <h2 style="margin-bottom:0">Insights</h2>
-      <div class="chips" style="margin-left:auto">${rchip('7','7 days')}${rchip('30','30 days')}${rchip('90','3 months')}${rchip('all','All time')}</div>
+      <div class="chips" style="margin-left:auto">${rchip('7','7 days')}${rchip('30','30 days')}${rchip('90','3 months')}${rchip('all','All time')}${rchip('custom','Custom')}</div>
+      <input type="date" class="dtin" id="d_from" value="${fmFrom}" onchange="setCustomDates()" title="from">
+      <span class="dim">→</span>
+      <input type="date" class="dtin" id="d_to" value="${fmTo}" onchange="setCustomDates()" title="to">
     </div>
-    <div class="sub" style="margin-top:4px">how your AI workforce is behaving — ${set.length} session(s)${real.length?'':' (demo data)'} · click a card to jump to that view</div>
+    <div class="sub" style="margin-top:4px">${set.length} session(s) in this window${real.length?'':' (demo data)'} · ▲▼ compare with the previous ${insRange==='all'?'—':'equal'} period · click a card to jump</div>
     <div class="igrid">
-      <div class="icard click" onclick="goFilter('all')"><b>${set.length}</b><span>sessions</span></div>
+      <div class="icard click" onclick="goFilter('all')"><b>${set.length}${kdelta(set.length,pv.sessions,true)}</b><span>sessions</span></div>
       <div class="icard click" onclick="goFilter('review')"><b style="color:${pending.length?'var(--high)':'var(--low)'}">${pending.length}</b><span>need review</span></div>
-      <div class="icard click" onclick="goFilter('all','level:critical')"><b style="color:${critical.length?'var(--critical)':'var(--low)'}">${critical.length}</b><span>critical sessions</span></div>
-      <div class="icard"><b>${claimed.length?Math.round(verified/claimed.length*100)+'%':'—'}</b><span>claims verified</span></div>
+      <div class="icard click" onclick="goFilter('all','level:critical')"><b style="color:${critical.length?'var(--critical)':'var(--low)'}">${critical.length}${kdelta(critical.length,pv.critical,false)}</b><span>critical sessions</span></div>
+      <div class="icard"><b>${vp===null?'—':vp+'%'}${vp!==null?kdelta(vp,pv.vp,true):''}</b><span>claims verified</span></div>
+      <div class="icard"><b>${set.reduce((n,c)=>n+c.findings.length,0)}${kdelta(set.reduce((n,c)=>n+c.findings.length,0),pv.findings,false)}</b><span>findings</span></div>
       <div class="icard click" onclick="goFilter('review')" title="pending cards untouched for over a day"><b style="color:${stale?'var(--critical)':'var(--low)'}">${stale}</b><span>waiting &gt; 24h</span></div>
-      <div class="icard click" onclick="goFilter('flagged')"><b>${set.filter(c=>c.review==='flagged').length}</b><span>flagged</span></div>
     </div>
     ${agentRows.length?`<section><h3>Agent scoreboard — who earns trust</h3>
       <table><tr><th>Agent</th><th>Sessions</th><th>Avg risk</th><th>Claims verified</th><th>Findings</th><th>Unreviewed</th></tr>
