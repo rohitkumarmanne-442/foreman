@@ -226,6 +226,9 @@
   #insights{flex:1;overflow-y:auto;padding:28px 36px;display:none}
   .igrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:26px}
   .icard{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:14px;padding:16px 18px;box-shadow:inset 0 1px 0 rgba(255,255,255,.03)}
+  .icard{transition:border-color .15s,transform .15s}
+  .icard.click{cursor:pointer}
+  .icard.click:hover{border-color:var(--line2);transform:translateY(-2px)}
   .icard b{font:650 24px var(--mono);font-variant-numeric:tabular-nums;display:block}
   .icard span{font-size:10.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.1em}
   .spark{display:flex;align-items:flex-end;gap:3px;height:64px;padding:4px 0}
@@ -425,6 +428,31 @@ async function copyPrComment(session){
   toast('📋 Evidence comment copied — paste it on your PR (or use: foreman pr)');
 }
 function copyCmd(text,btn){navigator.clipboard.writeText(text).then(()=>{toast('Copied: '+text);if(btn)btn.textContent='copied!';setTimeout(()=>{if(btn)btn.textContent='copy'},1500);});}
+async function copyInvestigate(session){
+  const c=cards.find(x=>x.session===session);if(!c)return;
+  const verifs=c.commands.filter(k=>k.verification);
+  const prompt=[
+    `You are auditing changes made by an AI agent (${c.agent}) in ${c.cwd}.`,
+    `Foreman scored this session ${c.level.toUpperCase()} ${c.score}/100. Investigate before anything ships.`,
+    '',
+    c.findings.length?'Findings to investigate:':null,
+    ...c.findings.map(f=>`- [${f.rule}] ${f.detail}`),
+    '',
+    'Files the agent touched (check each against git history — confirm nothing working was lost):',
+    ...c.files.slice(0,20).map(f=>`- ${f.path} (${f.lines_before??'new'} → ${f.lines_after??'?'} lines${(f.touches||1)>1?`, edited ${f.touches}×`:''})`),
+    c.files.length>20?`- …and ${c.files.length-20} more`:null,
+    '',
+    c.claims.length?`The agent claimed: ${c.claims.map(x=>`"${x}"`).join(' · ')} — ${verifs.filter(k=>k.ok).length}/${verifs.length} verification command(s) passed in the session.`:null,
+    '',
+    'Your job:',
+    '1. Diff the touched files against git history; flag any deleted working code.',
+    '2. Reproduce each finding above and state whether it is a real problem.',
+    "3. Run the project's tests/build yourself and report the actual output.",
+    '4. Report: verified-safe items, broken items, and anything needing a human decision. Do NOT make changes yet.',
+  ].filter(x=>x!==null).join('\n');
+  await navigator.clipboard.writeText(prompt);
+  toast('🔍 Investigation prompt copied — paste it into Claude Code (or any agent)');
+}
 function toggleHelp(){$('helpmodal').classList.toggle('show');}
 function toggleUses(){$('usesmodal').classList.toggle('show');}
 
@@ -753,6 +781,7 @@ function renderDetail(){
       <button class="btn approve ${c.review==='approved'?'active':''}" onclick="review('${esc(c.session)}','${c.review==='approved'?'pending':'approved'}')">✓ ${c.review==='approved'?'Approved':'Approve'}</button>
       <button class="btn flag ${c.review==='flagged'?'active':''}" onclick="${c.review==='flagged'?`review('${esc(c.session)}','pending')`:`openFlag('${esc(c.session)}')`}">⚑ ${c.review==='flagged'?'Flagged':'Flag'}</button>
       <button class="btn" onclick="copyPrComment('${esc(c.session)}')" title="Markdown evidence comment for your PR">📋 PR comment</button>
+      <button class="btn" onclick="copyInvestigate('${esc(c.session)}')" title="Copy a ready-made investigation prompt — paste it into Claude Code or any agent">🔍 Investigate</button>
       <span class="kbd-hint"><kbd>a</kbd> / <kbd>f</kbd></span>
     </div>
     ${c.reopened?`<div class="finding s3" style="margin-bottom:20px"><div class="frow"><span class="rule">↻ reopened</span><span><b>${c.new_changes||'New'} change${c.new_changes===1?'':'s'}</b> landed after your approval — it only covers what you saw. <a class="filelink" onclick="setDetailTab('timeline')">See exactly what's new →</a></span></div></div>`:''}
@@ -980,37 +1009,82 @@ function renderPal(){
 function runPal(i){const items=palFiltered();const a=items[i??palIdx];if(!a)return;closePalette();a.run();}
 
 // ── insights ────────────────────────────────────────────────────────
+function goFilter(f,q){showTab('inbox');filter=f;$('search').value=q||'';renderList();}
 function renderInsights(){
   const real=cards.filter(c=>!c.session.startsWith('demo-'));
   const set=real.length?real:cards;
   const days=[...Array(14)].map((_,i)=>{const d=new Date();d.setDate(d.getDate()-(13-i));return d;});
-  const key=d=>d.toISOString().slice(0,10);
-  const byDay=Object.fromEntries(days.map(d=>[key(d),0]));
-  for(const c of set){const k=(c.started||'').slice(0,10);if(k in byDay)byDay[k]++;}
-  const max=Math.max(1,...Object.values(byDay));
+  const key=d=>{const p=n=>String(n).padStart(2,'0');return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;};
+  const localKey=ts=>key(new Date(ts));
+  const byDay=Object.fromEntries(days.map(d=>[key(d),{n:0,score:0}]));
+  for(const c of set){const k=localKey(c.started);if(k in byDay){byDay[k].n++;byDay[k].score+=c.score;}}
+  const max=Math.max(1,...Object.values(byDay).map(v=>v.n));
   const claimed=set.filter(c=>c.claims.length);
   const verified=claimed.filter(c=>c.verified_claims).length;
+  const pending=set.filter(c=>c.review!=='approved');
+  const critical=set.filter(c=>c.level==='critical');
+
+  // per-agent scoreboard — which agent can you trust?
+  const agents={};
+  for(const c of set){
+    const a=agents[c.agent]??={n:0,score:0,claimed:0,verified:0,findings:0,pending:0};
+    a.n++;a.score+=c.score;a.findings+=c.findings.length;
+    if(c.claims.length){a.claimed++;if(c.verified_claims)a.verified++;}
+    if(c.review!=='approved')a.pending++;
+  }
+  const agentRows=Object.entries(agents).sort((x,y)=>y[1].n-x[1].n);
+
+  // file hotspots — code your agents keep rewriting
+  const hot={};
+  for(const c of set)for(const f of c.files){
+    const h=hot[f.path]??={touches:0,sessions:new Set()};
+    h.touches+=f.touches||1;h.sessions.add(c.session);
+  }
+  const hotspots=Object.entries(hot).map(([p,h])=>[p,h.touches,h.sessions.size]).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  const hmax=Math.max(1,...hotspots.map(h=>h[1]));
+
   const ruleCnt={};for(const c of set)for(const f of c.findings)ruleCnt[f.rule]=(ruleCnt[f.rule]||0)+1;
   const rules=Object.entries(ruleCnt).sort((a,b)=>b[1]-a[1]).slice(0,6);
   const rmax=Math.max(1,...rules.map(r=>r[1]));
-  const repoCnt={};for(const c of set){const r=base(c.cwd);repoCnt[r]=(repoCnt[r]||0)+1;}
-  const repos=Object.entries(repoCnt).sort((a,b)=>b[1]-a[1]).slice(0,5);
+
+  // review backlog — what's been waiting longest
+  const backlog=[...pending].sort((a,b)=>(a.last_activity||a.started).localeCompare(b.last_activity||b.started)).slice(0,3);
+  const stale=pending.filter(c=>Date.now()-new Date(c.last_activity||c.started)>86400000).length;
+
+  // teachings — flag notes the agents will read next session
+  const taught=set.filter(c=>c.review_note).slice(0,5);
+
+  const shortPath=p=>{const s=p.replace(/\\/g,'/').split('/');return s.slice(-2).join('/');};
   $('insights').innerHTML=`
     <h2>Insights</h2>
-    <div class="sub">how your AI workforce is behaving — ${set.length} session(s)${real.length?'':' (demo data)'}</div>
+    <div class="sub">how your AI workforce is behaving — ${set.length} session(s)${real.length?'':' (demo data)'} · click a card to jump to that view</div>
     <div class="igrid">
-      <div class="icard"><b>${set.length}</b><span>sessions</span></div>
-      <div class="icard"><b style="color:${set.filter(c=>c.review!=='approved').length?'var(--high)':'var(--low)'}">${set.filter(c=>c.review!=='approved').length}</b><span>need review</span></div>
+      <div class="icard click" onclick="goFilter('all')"><b>${set.length}</b><span>sessions</span></div>
+      <div class="icard click" onclick="goFilter('review')"><b style="color:${pending.length?'var(--high)':'var(--low)'}">${pending.length}</b><span>need review</span></div>
+      <div class="icard click" onclick="goFilter('all','level:critical')"><b style="color:${critical.length?'var(--critical)':'var(--low)'}">${critical.length}</b><span>critical sessions</span></div>
       <div class="icard"><b>${claimed.length?Math.round(verified/claimed.length*100)+'%':'—'}</b><span>claims verified</span></div>
-      <div class="icard"><b style="color:${set.filter(c=>c.level==='critical').length?'var(--critical)':'var(--low)'}">${set.filter(c=>c.level==='critical').length}</b><span>critical sessions</span></div>
-      <div class="icard"><b>${set.reduce((n,c)=>n+c.files.length,0)}</b><span>files touched</span></div>
+      <div class="icard click" onclick="goFilter('review')" title="pending cards untouched for over a day"><b style="color:${stale?'var(--critical)':'var(--low)'}">${stale}</b><span>waiting &gt; 24h</span></div>
+      <div class="icard click" onclick="goFilter('flagged')"><b>${set.filter(c=>c.review==='flagged').length}</b><span>flagged</span></div>
     </div>
-    <section><h3>Sessions per day — last 14 days</h3>
-      <div class="spark">${days.map(d=>{const n=byDay[key(d)];return `<div class="bar" style="height:${Math.max(4,n/max*100)}%"${n?` title="${key(d)}: ${n}"`:''}>${n?`<span>${n}</span>`:''}</div>`;}).join('')}</div>
+    ${agentRows.length?`<section><h3>Agent scoreboard — who earns trust</h3>
+      <table><tr><th>Agent</th><th>Sessions</th><th>Avg risk</th><th>Claims verified</th><th>Findings</th><th>Unreviewed</th></tr>
+      ${agentRows.map(([a,s])=>{const avg=Math.round(s.score/s.n);const vp=s.claimed?Math.round(s.verified/s.claimed*100):null;
+        return `<tr><td><b>${esc(AGENT_LABEL[a]||a)}</b></td><td class="mono">${s.n}</td><td class="mono" style="color:${avg>=70?'var(--critical)':avg>=40?'var(--high)':'var(--low)'}">${avg}</td><td class="mono" style="color:${vp===null?'var(--faint)':vp>=80?'var(--low)':'var(--high)'}">${vp===null?'—':vp+'%'}</td><td class="mono">${s.findings}</td><td class="mono" style="color:${s.pending?'var(--high)':'var(--low)'}">${s.pending}</td></tr>`;}).join('')}</table>
+      <div class="dim" style="font-size:11.5px;margin-top:6px">Avg risk trending down + claims verified trending up = an agent you can start fast-approving.</div></section>`:''}
+    <section><h3>Sessions per day — last 14 days (bar label = avg risk)</h3>
+      <div class="spark">${days.map(d=>{const v=byDay[key(d)];const avg=v.n?Math.round(v.score/v.n):0;
+        return `<div class="bar" style="height:${Math.max(4,v.n/max*100)}%;${avg>=70?'background:linear-gradient(180deg,var(--critical),rgba(255,84,104,.3))':avg>=40?'background:linear-gradient(180deg,var(--high),rgba(255,161,74,.3))':''}"${v.n?` title="${key(d)}: ${v.n} session(s), avg risk ${avg}"`:''}>${v.n?`<span>${avg}</span>`:''}</div>`;}).join('')}</div>
       <div class="sparklbl">${days.map(d=>`<i>${d.getDate()}</i>`).join('')}</div>
+      <div class="dim" style="font-size:11.5px;margin-top:4px">Bar height = sessions · bar color/number = that day's average risk score. Red days deserve a look even if you were busy.</div>
     </section>
+    ${hotspots.length?`<section><h3>File hotspots — code your agents keep hitting</h3>
+      ${hotspots.map(([p,t,s])=>`<div class="rbar"><span class="rname" title="${esc(p)}">${esc(shortPath(p))}</span><div class="rtrack"><div class="rfill" style="width:${t/hmax*100}%"></div></div><span class="rn" title="${t} edits across ${s} session(s)">${t}×</span></div>`).join('')}
+      <div class="dim" style="font-size:11.5px;margin-top:4px">Files rewritten again and again are where regressions breed — consider a test or a flag note about them.</div></section>`:''}
     ${rules.length?`<section><h3>What the rules are catching</h3>${rules.map(([r,n])=>`<div class="rbar"><span class="rname">${esc(r)}</span><div class="rtrack"><div class="rfill" style="width:${n/rmax*100}%"></div></div><span class="rn">${n}</span></div>`).join('')}</section>`:''}
-    ${repos.length?`<section><h3>Busiest repos</h3>${repos.map(([r,n])=>`<div class="rbar"><span class="rname">${esc(r)}</span><div class="rtrack"><div class="rfill" style="width:${n/repos[0][1]*100}%"></div></div><span class="rn">${n}</span></div>`).join('')}</section>`:''}`;
+    ${backlog.length?`<section><h3>Oldest in your queue</h3>
+      ${backlog.map(c=>`<div class="rbar" style="cursor:pointer" onclick="showTab('inbox');select('${esc(c.session)}')"><span class="rname">${esc(base(c.cwd))}</span><span class="badge b-${c.level}" style="flex-shrink:0">${c.level} ${c.score}</span><span class="dim" style="font-size:12px">waiting ${ago(c.last_activity||c.started)}</span></div>`).join('')}</section>`:''}
+    ${taught.length?`<section><h3>What you've taught your agents</h3>
+      ${taught.map(c=>`<div class="finding s3" style="border-left-color:var(--accent)"><div class="frow"><span class="rule">${esc(base(c.cwd))}</span><span>“${esc(c.review_note)}”</span></div><div class="why">delivered to the agent's next session in that repo</div></div>`).join('')}</section>`:''}`;
 }
 
 // ── settings panel ──────────────────────────────────────────────────
