@@ -627,10 +627,14 @@ test("cli smoke: report/config/status/uninstall round-trip", async () => {
   for (const f of [".claude/settings.json", ".cursor/hooks.json", ".gemini/settings.json", ".opencode/plugins/foreman.mjs"]) {
     assert.ok(fs.existsSync(path.join(proj, f)), `${f} installed`);
   }
+  const tasksFile = path.join(proj, ".vscode", "tasks.json");
+  assert.ok(fs.existsSync(tasksFile), "VS Code / Cursor task installed");
+  assert.ok(fs.readFileSync(tasksFile, "utf8").includes("Foreman: Open Inbox"), "open-inbox task present");
   const un = await cli(["uninstall"], proj);
   assert.equal(un.code, 0);
   assert.ok(un.out.includes("removed"));
   assert.ok(!fs.existsSync(path.join(proj, ".opencode/plugins/foreman.mjs")), "opencode plugin removed");
+  assert.ok(!fs.existsSync(tasksFile), "VS Code task removed");
   const claude = JSON.parse(fs.readFileSync(path.join(proj, ".claude/settings.json"), "utf8"));
   assert.ok(!claude.hooks, "claude hooks removed");
   const gemini = JSON.parse(fs.readFileSync(path.join(proj, ".gemini/settings.json"), "utf8"));

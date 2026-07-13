@@ -23,7 +23,9 @@ const HELP = `
   GET STARTED
     foreman init [--agent claude|cursor|gemini|opencode|all] [--global]
                                  install native hooks (default: all agents, this repo)
-    foreman ui [--port 4517]     open the review inbox (127.0.0.1 only)
+    foreman ui [--port 4517]     open the review inbox (reuses a running server;
+                                 always opens your browser)
+    foreman shortcut             Start Menu + Desktop shortcut (Win) / launcher (Linux)
     foreman run [--name codex] -- <agent command...>
                                  supervise ANY terminal agent (Codex, Gemini, Copilot, aider…)
     foreman watch [path]         watch a repo continuously — works with any IDE/agent
@@ -224,6 +226,11 @@ async function main(): Promise<void> {
       console.error(`Unknown agent "${agent}". Use: claude | cursor | gemini | opencode | all`);
       process.exit(1);
     }
+    if (!isGlobal) {
+      const { installVsCodeTask } = await import("./ide.js");
+      const task = installVsCodeTask();
+      if (task) installed.push(`VS Code/Cursor → "Foreman: Open Inbox" task (Terminal → Run Task)`);
+    }
     console.log(`✅ Foreman hooks installed for ${isGlobal ? "ALL repos" : "this repo"}:\n`);
     for (const line of installed) console.log(`   ${line}`);
     console.log(`\n   Using another IDE or agent? Universal mode works with everything:`);
@@ -232,9 +239,24 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (cmd === "shortcut") {
+    const { createShortcuts } = await import("./ide.js");
+    const made = createShortcuts();
+    if (made.length) {
+      console.log(`✅ One-click Foreman:`);
+      for (const f of made) console.log(`   ${f}`);
+    } else {
+      console.log(`On macOS the menu bar is the native home: run \`foreman tray\` (xbar/SwiftBar).`);
+      console.log(`You can also install the inbox as an app: open it in Chrome/Edge → menu → Install Foreman.`);
+    }
+    return;
+  }
+
   if (cmd === "uninstall") {
     const { uninstallGeminiHooks } = await import("./hooks/gemini.js");
     const { uninstallOpenCodeAdapter } = await import("./hooks/opencode.js");
+    const { uninstallVsCodeTask } = await import("./ide.js");
+    if (!isGlobal) uninstallVsCodeTask();
     const removed = [
       uninstallClaudeCodeHooks({ global: isGlobal }),
       uninstallCursorHooks({ global: isGlobal }),

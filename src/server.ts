@@ -147,7 +147,7 @@ export function startServer(port = DEFAULT_PORT): http.Server {
   });
   server.on("error", (err: NodeJS.ErrnoException) => {
     if (err.code === "EADDRINUSE") {
-      console.log(`🧑‍🏭 Foreman is already running on http://127.0.0.1:${port} — using that one.`);
+      console.log(`🧑‍🏭 Foreman is already running on http://127.0.0.1:${port} — opened it in your browser.`);
       process.exit(0);
     }
     throw err;
