@@ -231,6 +231,13 @@
   .icard.click:hover{border-color:var(--line2);transform:translateY(-2px)}
   .icard b{font:650 24px var(--mono);font-variant-numeric:tabular-nums;display:block}
   .icard span{font-size:10.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.1em}
+  .chartrow{display:grid;grid-template-columns:2.2fr 1fr;gap:14px;margin-bottom:28px}
+  @media(max-width:1100px){.chartrow{grid-template-columns:1fr}}
+  .chartcard{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:16px;padding:18px 20px;box-shadow:0 10px 28px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.03)}
+  .chartcard h3{margin-bottom:12px}
+  .lstack{display:flex;height:14px;border-radius:8px;overflow:hidden;gap:2px;margin-bottom:9px}
+  .llegend{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--dim)}
+  .llegend i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px}
   .spark{display:flex;align-items:flex-end;gap:3px;height:64px;padding:4px 0}
   .spark .bar{flex:1;min-width:6px;background:linear-gradient(180deg,var(--accent),rgba(106,149,255,.25));border-radius:3px 3px 0 0;position:relative}
   .spark .bar span{position:absolute;top:-16px;left:50%;transform:translateX(-50%);font:10px var(--mono);color:var(--faint)}
@@ -1010,19 +1017,65 @@ function runPal(i){const items=palFiltered();const a=items[i??palIdx];if(!a)retu
 
 // ── insights ────────────────────────────────────────────────────────
 function goFilter(f,q){showTab('inbox');filter=f;$('search').value=q||'';renderList();}
+let insRange=localStorage.getItem('foreman_insights_range')||'30';
+function setInsRange(r){insRange=r;localStorage.setItem('foreman_insights_range',r);renderInsights();}
+
+function insBuckets(set){
+  const out=[];const now=new Date();
+  const mk=(s,e,label)=>({s:+s,e:+e,label,n:0,score:0});
+  if(insRange==='7'||insRange==='30'){
+    const days=insRange==='7'?7:30;
+    for(let i=days-1;i>=0;i--){const d=new Date(now);d.setHours(0,0,0,0);d.setDate(d.getDate()-i);const e=new Date(d);e.setDate(e.getDate()+1);
+      out.push(mk(d,e,insRange==='7'?d.toLocaleDateString(undefined,{weekday:'short'}):String(d.getDate())));}
+  }else if(insRange==='90'){
+    for(let i=12;i>=0;i--){const e=new Date(now);e.setDate(e.getDate()-i*7+1);e.setHours(0,0,0,0);const s=new Date(e);s.setDate(s.getDate()-7);
+      out.push(mk(s,e,`${s.getMonth()+1}/${s.getDate()}`));}
+  }else{
+    const first=set.length?new Date(Math.min(...set.map(c=>+new Date(c.started)))):now;
+    const months=Math.max(1,Math.min(12,(now.getFullYear()-first.getFullYear())*12+now.getMonth()-first.getMonth()+1));
+    for(let i=months-1;i>=0;i--){const s=new Date(now.getFullYear(),now.getMonth()-i,1);const e=new Date(now.getFullYear(),now.getMonth()-i+1,1);
+      out.push(mk(s,e,s.toLocaleDateString(undefined,{month:'short'})));}
+  }
+  for(const c of set){const t=+new Date(c.started);const b=out.find(x=>t>=x.s&&t<x.e);if(b){b.n++;b.score+=c.score;}}
+  return out;
+}
+function areaChart(pts){
+  const w=780,h=190,L=42,R=16,B=28,T=14;
+  const max=Math.max(1,...pts.map(p=>p.n));
+  const px=i=>L+i*((w-L-R)/Math.max(1,pts.length-1));
+  const py=v=>h-B-(v/max)*(h-B-T);
+  const line=pts.map((p,i)=>`${i?'L':'M'}${px(i).toFixed(1)},${py(p.n).toFixed(1)}`).join(' ');
+  const area=`${line} L${px(pts.length-1).toFixed(1)},${h-B} L${px(0).toFixed(1)},${h-B} Z`;
+  const grid=[.5,1].map(f=>`<line x1="${L}" x2="${w-R}" y1="${py(max*f)}" y2="${py(max*f)}" stroke="rgba(255,255,255,.06)" stroke-dasharray="3 5"/><text x="${L-7}" y="${py(max*f)+4}" text-anchor="end" font-size="10" fill="#5d6579">${Math.round(max*f)}</text>`).join('');
+  const dots=pts.map((p,i)=>{if(!p.n)return '';const avg=Math.round(p.score/p.n);
+    return `<circle cx="${px(i)}" cy="${py(p.n)}" r="4.5" fill="${avg>=70?'#ff5468':avg>=40?'#ffa14a':'#3fe0a0'}" stroke="#0f1421" stroke-width="2"><title>${p.label}: ${p.n} session(s) · avg risk ${avg}</title></circle>`;}).join('');
+  const step=Math.ceil(pts.length/15);
+  const xl=pts.map((p,i)=>i%step?'':`<text x="${px(i)}" y="${h-8}" text-anchor="middle" font-size="10" fill="#5d6579">${p.label}</text>`).join('');
+  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto;display:block">
+    <defs><linearGradient id="ag" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="rgba(106,149,255,.4)"/><stop offset="1" stop-color="rgba(106,149,255,0)"/></linearGradient></defs>
+    ${grid}<path d="${area}" fill="url(#ag)"/><path d="${line}" fill="none" stroke="#6a95ff" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>${dots}${xl}</svg>`;
+}
+function donut(pct,label,color){
+  const r=52,c=2*Math.PI*r;const v=pct===null?0:pct;
+  return `<svg viewBox="0 0 140 140" style="width:132px;height:132px">
+    <circle cx="70" cy="70" r="${r}" fill="none" stroke="rgba(255,255,255,.06)" stroke-width="13"/>
+    <circle cx="70" cy="70" r="${r}" fill="none" stroke="${color}" stroke-width="13" stroke-linecap="round" stroke-dasharray="${(c*v/100).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 70 70)"/>
+    <text x="70" y="68" text-anchor="middle" font-size="26" font-weight="800" fill="#ecf0f8" font-family="Consolas,monospace">${pct===null?'—':pct+'%'}</text>
+    <text x="70" y="90" text-anchor="middle" font-size="8.5" fill="#5d6579" letter-spacing="1.5">${label}</text></svg>`;
+}
 function renderInsights(){
   const real=cards.filter(c=>!c.session.startsWith('demo-'));
-  const set=real.length?real:cards;
-  const days=[...Array(14)].map((_,i)=>{const d=new Date();d.setDate(d.getDate()-(13-i));return d;});
-  const key=d=>{const p=n=>String(n).padStart(2,'0');return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;};
-  const localKey=ts=>key(new Date(ts));
-  const byDay=Object.fromEntries(days.map(d=>[key(d),{n:0,score:0}]));
-  for(const c of set){const k=localKey(c.started);if(k in byDay){byDay[k].n++;byDay[k].score+=c.score;}}
-  const max=Math.max(1,...Object.values(byDay).map(v=>v.n));
+  let set=real.length?real:cards;
+  if(insRange!=='all'){const cut=Date.now()-Number(insRange)*86400000;set=set.filter(c=>+new Date(c.started)>=cut);}
+  const pts=insBuckets(set);
   const claimed=set.filter(c=>c.claims.length);
   const verified=claimed.filter(c=>c.verified_claims).length;
   const pending=set.filter(c=>c.review!=='approved');
   const critical=set.filter(c=>c.level==='critical');
+  const vp=claimed.length?Math.round(verified/claimed.length*100):null;
+  const levels=['critical','high','medium','low'].map(l=>[l,set.filter(c=>c.level===l).length]);
+  const ltot=Math.max(1,set.length);
+  const lcolor={critical:'#ff5468',high:'#ffa14a',medium:'#ffd166',low:'#3fe0a0'};
 
   // per-agent scoreboard — which agent can you trust?
   const agents={};
@@ -1055,9 +1108,13 @@ function renderInsights(){
   const taught=set.filter(c=>c.review_note).slice(0,5);
 
   const shortPath=p=>{const s=p.replace(/\\/g,'/').split('/');return s.slice(-2).join('/');};
+  const rchip=(r,l)=>`<div class="chip ${insRange===r?'active':''}" onclick="setInsRange('${r}')">${l}</div>`;
   $('insights').innerHTML=`
-    <h2>Insights</h2>
-    <div class="sub">how your AI workforce is behaving — ${set.length} session(s)${real.length?'':' (demo data)'} · click a card to jump to that view</div>
+    <div style="display:flex;align-items:baseline;gap:16px;flex-wrap:wrap">
+      <h2 style="margin-bottom:0">Insights</h2>
+      <div class="chips" style="margin-left:auto">${rchip('7','7 days')}${rchip('30','30 days')}${rchip('90','3 months')}${rchip('all','All time')}</div>
+    </div>
+    <div class="sub" style="margin-top:4px">how your AI workforce is behaving — ${set.length} session(s)${real.length?'':' (demo data)'} · click a card to jump to that view</div>
     <div class="igrid">
       <div class="icard click" onclick="goFilter('all')"><b>${set.length}</b><span>sessions</span></div>
       <div class="icard click" onclick="goFilter('review')"><b style="color:${pending.length?'var(--high)':'var(--low)'}">${pending.length}</b><span>need review</span></div>
@@ -1071,12 +1128,18 @@ function renderInsights(){
       ${agentRows.map(([a,s])=>{const avg=Math.round(s.score/s.n);const vp=s.claimed?Math.round(s.verified/s.claimed*100):null;
         return `<tr><td><b>${esc(AGENT_LABEL[a]||a)}</b></td><td class="mono">${s.n}</td><td class="mono" style="color:${avg>=70?'var(--critical)':avg>=40?'var(--high)':'var(--low)'}">${avg}</td><td class="mono" style="color:${vp===null?'var(--faint)':vp>=80?'var(--low)':'var(--high)'}">${vp===null?'—':vp+'%'}</td><td class="mono">${s.findings}</td><td class="mono" style="color:${s.pending?'var(--high)':'var(--low)'}">${s.pending}</td></tr>`;}).join('')}</table>
       <div class="dim" style="font-size:11.5px;margin-top:6px">Avg risk trending down + claims verified trending up = an agent you can start fast-approving.</div></section>`:''}
-    <section><h3>Sessions per day — last 14 days (bar label = avg risk)</h3>
-      <div class="spark">${days.map(d=>{const v=byDay[key(d)];const avg=v.n?Math.round(v.score/v.n):0;
-        return `<div class="bar" style="height:${Math.max(4,v.n/max*100)}%;${avg>=70?'background:linear-gradient(180deg,var(--critical),rgba(255,84,104,.3))':avg>=40?'background:linear-gradient(180deg,var(--high),rgba(255,161,74,.3))':''}"${v.n?` title="${key(d)}: ${v.n} session(s), avg risk ${avg}"`:''}>${v.n?`<span>${avg}</span>`:''}</div>`;}).join('')}</div>
-      <div class="sparklbl">${days.map(d=>`<i>${d.getDate()}</i>`).join('')}</div>
-      <div class="dim" style="font-size:11.5px;margin-top:4px">Bar height = sessions · bar color/number = that day's average risk score. Red days deserve a look even if you were busy.</div>
-    </section>
+    <div class="chartrow">
+      <div class="chartcard">
+        <h3>Sessions over time — dot color = that period's avg risk</h3>
+        ${areaChart(pts)}
+      </div>
+      <div class="chartcard side">
+        <div style="display:flex;align-items:center;justify-content:center">${donut(vp,'CLAIMS PROVEN',vp===null?'#5d6579':vp>=80?'#3fe0a0':vp>=50?'#ffa14a':'#ff5468')}</div>
+        <h3 style="margin-top:14px">Risk mix</h3>
+        <div class="lstack">${levels.map(([l,n])=>n?`<div style="flex:${n};background:${lcolor[l]}" title="${l}: ${n}"></div>`:'').join('')||'<div style="flex:1;background:rgba(255,255,255,.05)"></div>'}</div>
+        <div class="llegend">${levels.map(([l,n])=>`<span><i style="background:${lcolor[l]}"></i>${l} ${n}</span>`).join('')}</div>
+      </div>
+    </div>
     ${hotspots.length?`<section><h3>File hotspots — code your agents keep hitting</h3>
       ${hotspots.map(([p,t,s])=>`<div class="rbar"><span class="rname" title="${esc(p)}">${esc(shortPath(p))}</span><div class="rtrack"><div class="rfill" style="width:${t/hmax*100}%"></div></div><span class="rn" title="${t} edits across ${s} session(s)">${t}×</span></div>`).join('')}
       <div class="dim" style="font-size:11.5px;margin-top:4px">Files rewritten again and again are where regressions breed — consider a test or a flag note about them.</div></section>`:''}

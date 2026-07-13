@@ -79,6 +79,26 @@ foreman demo && foreman ui      # a populated inbox in 30 seconds
 
 Requires Node 18+. Remove the sample data anytime with `foreman demo --clear`.
 
+## Already use Claude Code? See your real history in ten seconds
+
+You don't have to wait for your next session — Claude Code has been journaling every session you ever ran. Mine it:
+
+```bash
+foreman backfill        # your existing ~/.claude/projects history → risk-ranked cards
+foreman ui              # …and there's your last three months, reviewed
+```
+
+Real timestamps, real diffs, real claims — every force push and unverified "everything works" you never knew about. Sessions Foreman already tracked are skipped, chat-only sessions are ignored.
+
+Then show it off:
+
+```bash
+foreman wrapped         # a shareable PNG report card of your AI workforce
+foreman badge           # README badge: "AI code — human-reviewed with Foreman"
+```
+
+[![AI code human-reviewed with Foreman](https://img.shields.io/badge/AI%20code-human--reviewed%20with%20Foreman-6a95ff?labelColor=0b0e14)](https://github.com/rohitkumarmanne-442/Foreman)
+
 ## Connect your agent
 
 <details>
@@ -316,6 +336,9 @@ Exports your review cards for this repo as an **ed25519-signed pack** and import
 | `foreman report --sarif [--out f.sarif]` | findings as SARIF → native GitHub PR annotations |
 | `foreman status` | one-screen summary in the terminal |
 | `foreman demo [--clear]` | seed / remove showcase data |
+| `foreman backfill [--days N] [--dir path]` | import your existing Claude Code history |
+| `foreman wrapped [--days N] [--out f.png]` | shareable report card of your AI workforce |
+| `foreman badge` | README badge markdown |
 | `foreman config` | show config path + active settings |
 | `foreman uninstall [--global]` | remove hooks (your journal stays) |
 

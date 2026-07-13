@@ -818,3 +818,53 @@ test("jira: flag creates an issue against the configured instance", async () => 
   mock.close();
   saveConfig({ jira: null } as any);
 });
+
+test("backfill: historical Claude Code transcripts become cards", async () => {
+  const { backfill } = await import("../backfill.js");
+  const { buildCards } = await import("../cards.js");
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "fm-transcripts-"));
+  const proj = path.join(root, "C--fake-proj");
+  fs.mkdirSync(proj);
+  const sid = "hist-session-9";
+  const lines = [
+    { type: "user", sessionId: sid, cwd: "C:/fake/repo", timestamp: "2026-06-01T10:00:00.000Z", message: { role: "user", content: [{ type: "text", text: "fix it" }] } },
+    { type: "assistant", sessionId: sid, cwd: "C:/fake/repo", timestamp: "2026-06-01T10:01:00.000Z", message: { role: "assistant", content: [
+      { type: "tool_use", id: "tu1", name: "Bash", input: { command: "git push --force origin main" } },
+      { type: "tool_use", id: "tu2", name: "Edit", input: { file_path: "C:/fake/repo/a.ts", old_string: "x=1", new_string: "x=2" } }] } },
+    { type: "user", sessionId: sid, timestamp: "2026-06-01T10:01:30.000Z", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "tu1", is_error: true }] } },
+    { type: "assistant", sessionId: sid, timestamp: "2026-06-01T10:02:00.000Z", message: { role: "assistant", content: [{ type: "text", text: "Everything works now. Done." }] } },
+  ];
+  fs.writeFileSync(path.join(proj, sid + ".jsonl"), lines.map((l) => JSON.stringify(l)).join("\n") + "\n");
+  // a chat-only session must be skipped — no code changes, no card
+  fs.writeFileSync(path.join(proj, "qa-only.jsonl"),
+    JSON.stringify({ type: "assistant", sessionId: "qa-only", timestamp: "2026-06-01T10:00:00.000Z", message: { role: "assistant", content: [{ type: "text", text: "answer" }] } }) + "\n");
+
+  const res = await backfill({ root });
+  assert.equal(res.sessions_imported, 1, "one real session imported");
+  assert.equal(res.sessions_skipped_empty, 1, "chat-only skipped");
+
+  const card = buildCards().find((c) => c.session === sid)!;
+  assert.ok(card, "historical card exists");
+  assert.equal(card.started.slice(0, 10), "2026-06-01", "real historical timestamps kept");
+  assert.equal(card.open, false, "history is closed");
+  assert.equal(card.commands[0].ok, false, "tool_result is_error → failed command");
+  assert.ok(card.findings.some((f) => f.rule === "destructive_command"), "force push caught in history");
+  assert.deepEqual(card.files[0].edits, [{ old: "x=1", new: "x=2" }]);
+  assert.ok(card.claims.length >= 1, "claims parsed from final message");
+
+  const again = await backfill({ root });
+  assert.equal(again.sessions_imported, 0, "idempotent — no duplicates");
+  assert.ok(again.sessions_skipped_existing >= 1);
+});
+
+test("wrapped: stats, share card html, badge", async () => {
+  const { wrappedStats, wrappedHtml, BADGE_MD } = await import("../wrapped.js");
+  const s = wrappedStats();
+  assert.ok(s.sessions >= 1, "counts real sessions");
+  assert.ok(s.findings >= 1, "findings counted");
+  const html = wrappedHtml(s);
+  assert.ok(html.includes("FORE"), "brand present");
+  assert.ok(html.includes("agent sessions"), "stats present");
+  assert.ok(html.includes("prove it"), "tagline present");
+  assert.ok(BADGE_MD.includes("img.shields.io"), "badge markdown ready");
+});

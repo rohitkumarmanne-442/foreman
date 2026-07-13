@@ -30,6 +30,9 @@ const HELP = `
                                  supervise ANY terminal agent (Codex, Gemini, Copilot, aider…)
     foreman watch [path]         watch a repo continuously — works with any IDE/agent
     foreman demo [--clear]       seed (or remove) showcase data to explore the inbox
+    foreman backfill [--days N]  import your EXISTING Claude Code history as review cards
+    foreman wrapped [--days N]   shareable report card of your AI workforce (PNG)
+    foreman badge                README badge markdown
 
   THE FEEDBACK LOOP
     foreman brief [path]         print outstanding human flags for a repo (agents read this;
@@ -236,6 +239,40 @@ async function main(): Promise<void> {
     console.log(`\n   Using another IDE or agent? Universal mode works with everything:`);
     console.log(`     foreman watch`);
     console.log(`\n   Open the inbox:  foreman ui`);
+    return;
+  }
+
+  if (cmd === "backfill") {
+    const { backfill, transcriptRoot } = await import("./backfill.js");
+    const days = arg("--days") ? Number(arg("--days")) : undefined;
+    const root = arg("--dir") ?? transcriptRoot();
+    console.log(`🧑‍🏭 Mining your existing agent history…\n   ${root}\n`);
+    const res = await backfill({ root, days, onFile: (f) => console.log(`   scanning ${path.basename(f)}`) });
+    console.log(`\n✅ Backfill complete:`);
+    console.log(`   ${res.sessions_imported} historical session(s) imported (${res.events} events)`);
+    console.log(`   ${res.sessions_skipped_existing} already tracked · ${res.sessions_skipped_empty} skipped (no code changes${days ? " in range" : ""})`);
+    if (res.sessions_imported) {
+      console.log(`\n   Your history is now risk-ranked. See what your agents have been up to:`);
+      console.log(`     foreman ui        (Insights tab for the full picture)`);
+      console.log(`     foreman wrapped   (shareable report card)`);
+    }
+    return;
+  }
+
+  if (cmd === "wrapped") {
+    const { renderWrapped } = await import("./wrapped.js");
+    const days = arg("--days") ? Number(arg("--days")) : undefined;
+    const r = renderWrapped(days, arg("--out"));
+    console.log(r.png
+      ? `✅ Your report card → ${r.file}\n   Post it. Every stat is from your real journal.`
+      : `✅ Report card (HTML) → ${r.file} — opened in your browser; screenshot to share.\n   (Install Chrome/Edge for automatic PNG export.)`);
+    return;
+  }
+
+  if (cmd === "badge") {
+    const { BADGE_MD } = await import("./wrapped.js");
+    console.log(`Add to your README — tell people a human reviews the AI's work here:\n`);
+    console.log(BADGE_MD);
     return;
   }
 
