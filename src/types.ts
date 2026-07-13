@@ -102,6 +102,10 @@ export interface ReviewCard {
   started: string;
   ended?: string;
   open: boolean; // no session_end seen yet
+  /** ts of the newest event folded into this card */
+  last_activity: string;
+  /** true when the agent kept working after the card was approved — approval no longer covers the new work */
+  reopened?: boolean;
   files: FileTouch[];
   commands: CommandRun[];
   claims: string[];

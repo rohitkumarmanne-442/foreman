@@ -626,3 +626,95 @@ test("cli smoke: report/config/status/uninstall round-trip", async () => {
   const gemini = JSON.parse(fs.readFileSync(path.join(proj, ".gemini/settings.json"), "utf8"));
   assert.ok(!gemini.hooks, "gemini hooks removed");
 });
+
+test("stale approval: new activity after approve reopens the card", async () => {
+  const session = "test-reopen-1";
+  const file = path.join(TMP, "reopen.ts");
+  fs.writeFileSync(file, "const a = 1;\n");
+
+  await runHook({
+    session_id: session, cwd: TMP, hook_event_name: "PostToolUse",
+    tool_name: "Edit",
+    tool_input: { file_path: file, old_string: "const a = 1;", new_string: "const a = 2;" },
+    tool_response: {},
+  });
+
+  const { setReview } = await import("../reviews.js");
+  const { buildCards } = await import("../cards.js");
+
+  setReview(session, "approved");
+  let card = buildCards().find((c) => c.session === session);
+  assert.ok(card, "card exists");
+  assert.equal(card!.review, "approved");
+  assert.ok(!card!.reopened, "not reopened yet");
+
+  // the agent keeps working after the human approved
+  await new Promise((r) => setTimeout(r, 15));
+  await runHook({
+    session_id: session, cwd: TMP, hook_event_name: "PostToolUse",
+    tool_name: "Bash",
+    tool_input: { command: "rm -rf build/" },
+    tool_response: {},
+  });
+
+  card = buildCards().find((c) => c.session === session);
+  assert.equal(card!.review, "pending", "approval voided by new activity");
+  assert.equal(card!.reopened, true, "marked as reopened");
+
+  // re-approving after seeing the new work makes it stick
+  setReview(session, "approved");
+  card = buildCards().find((c) => c.session === session);
+  assert.equal(card!.review, "approved");
+  assert.ok(!card!.reopened);
+});
+
+test("timeline: chronological per-event feed with diffs", async () => {
+  const session = "test-timeline-1";
+  const file = path.join(TMP, "tl.py");
+  fs.writeFileSync(file, Array.from({ length: 80 }, (_, i) => `row ${i}`).join("\n"));
+
+  await runHook({
+    session_id: session, cwd: TMP, hook_event_name: "PreToolUse",
+    tool_name: "Write", tool_input: { file_path: file },
+  });
+  await runHook({
+    session_id: session, cwd: TMP, hook_event_name: "PostToolUse",
+    tool_name: "Write",
+    tool_input: { file_path: file, content: "print('rewritten')\n" },
+    tool_response: {},
+  });
+  await runHook({
+    session_id: session, cwd: TMP, hook_event_name: "PostToolUse",
+    tool_name: "Edit",
+    tool_input: { file_path: file, old_string: "print('rewritten')", new_string: "print('edited')" },
+    tool_response: {},
+  });
+  await runHook({
+    session_id: session, cwd: TMP, hook_event_name: "PostToolUse",
+    tool_name: "Bash",
+    tool_input: { command: "pytest -q" },
+    tool_response: {},
+  });
+  await runHook({ session_id: session, cwd: TMP, hook_event_name: "Stop" });
+
+  const { buildTimeline } = await import("../timeline.js");
+  const items = buildTimeline(session);
+
+  assert.equal(items.length, 4, "write + edit + command + end");
+  assert.deepEqual(items.map((i) => i.type), ["file", "file", "command", "end"]);
+  for (let i = 1; i < items.length; i++) assert.ok(items[i].ts >= items[i - 1].ts, "chronological order");
+
+  const write = items[0];
+  assert.equal(write.action, "write");
+  assert.equal(write.lines_before, 80, "before-image captured from pre_tool");
+  assert.ok(write.before_sample?.includes("row 0"), "before sample present");
+  assert.ok(write.after_sample?.includes("rewritten"), "after sample present");
+
+  const edit = items[1];
+  assert.equal(edit.action, "edit");
+  assert.equal(edit.edits?.[0].new, "print('edited')", "edit pair preserved");
+
+  const cmd = items[2];
+  assert.equal(cmd.command, "pytest -q");
+  assert.equal(cmd.verification, true, "pytest counts as verification");
+});

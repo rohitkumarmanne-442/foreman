@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { buildCards } from "./cards.js";
+import { buildTimeline } from "./timeline.js";
 import { readEvents } from "./journal.js";
 import { setReview } from "./reviews.js";
 import { verifyReceipt, type ReceiptBody } from "./mcp/receipts.js";
@@ -56,6 +57,9 @@ export function startServer(port = DEFAULT_PORT): http.Server {
         send(200, JSON.stringify(buildCards()));
       } else if (url.pathname === "/api/receipts") {
         send(200, JSON.stringify(receiptRows()));
+      } else if (url.pathname === "/api/timeline") {
+        const session = url.searchParams.get("session") ?? "";
+        send(200, JSON.stringify(buildTimeline(session)));
       } else if (url.pathname === "/api/pr-comment") {
         const session = url.searchParams.get("session") ?? "";
         const card = buildCards().find((c) => c.session === session);

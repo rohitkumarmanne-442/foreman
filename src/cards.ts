@@ -104,6 +104,7 @@ export function buildCards(events?: ForemanEvent[]): ReviewCard[] {
       started: first.ts,
       ended: end?.ts,
       open: !end,
+      last_activity: list[list.length - 1].ts,
       files,
       commands,
       claims: endData.claims ?? [],
@@ -119,9 +120,14 @@ export function buildCards(events?: ForemanEvent[]): ReviewCard[] {
 
   const reviews = loadReviews();
   for (const c of cards) {
-    c.review = reviews[c.session]?.status ?? "pending";
-    const note = reviews[c.session]?.note;
-    if (note) c.review_note = note;
+    const r = reviews[c.session];
+    c.review = r?.status ?? "pending";
+    if (r?.note) c.review_note = r.note;
+    // an approval only covers the work the human actually saw — new events void it
+    if (c.review === "approved" && r?.ts && c.last_activity > r.ts) {
+      c.review = "pending";
+      c.reopened = true;
+    }
   }
 
   // Needs-review first, then risk, then recency — the whole point of the inbox
