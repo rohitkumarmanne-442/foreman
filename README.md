@@ -271,6 +271,12 @@ foreman pr --print            # print the markdown — paste it anywhere (GitLab
 
 The inbox has the same thing as a **📋 PR comment** button on every card. Approved cards say so; flagged cards carry your note. Your PR reviews start from evidence, not vibes.
 
+## The Blast Radius
+
+Code-graph tools show you what your codebase *is*. Foreman's **🕸 Blast Radius** tab shows what AI is *doing to it* — a live force map where every session is a hub, every touched file is a node **sized by edit intensity and colored by risk**. Critical files glow red, freshly-touched files pulse, and shared files bridge sessions so you see exactly where two agents collided. Click a file for its sessions; click a hub for the card. Ranges from 7 days to all time.
+
+Nobody else has this view, because nobody else has the data: it's drawn entirely from your local journal.
+
 ## Drive it like a product
 
 - **Ctrl+K command palette** — every action and every session, fuzzy-searchable: approve, flag, bulk-approve all visible, jump anywhere, switch theme.
