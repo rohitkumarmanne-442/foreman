@@ -78,7 +78,7 @@ foreman backfill && foreman ui    # your last few months of sessions, risk-ranke
 
 Then open the inbox and leave it running — cards appear live: `foreman ui`
 
-**④ Gate your CI** — block PRs with unreviewed risky agent sessions, straight from the [GitHub Marketplace](https://github.com/marketplace/actions/foreman-gate):
+**④ Gate your CI** — block PRs with unreviewed risky agent sessions, straight from the [GitHub Marketplace](https://github.com/marketplace/actions/foreman-agent-review-gate):
 
 ```yaml
 # .github/workflows/foreman.yml
