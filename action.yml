@@ -1,4 +1,4 @@
-name: "Foreman Gate"
+name: "Foreman Agent Review Gate"
 description: "Block PRs with unreviewed risky AI-agent sessions, and surface Foreman findings as native GitHub code-scanning annotations."
 author: "rohitkumarmanne-442"
 branding:
