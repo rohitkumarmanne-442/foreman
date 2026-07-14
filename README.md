@@ -6,12 +6,7 @@
 
 *Your agents say "done." Foreman says "prove it."*
 
-[![npm](https://img.shields.io/npm/v/foremanjs?color=5b8cff&label=npm)](https://www.npmjs.com/package/foremanjs)
-[![tests](https://img.shields.io/badge/tests-36%2F36_passing-3ddc97)](https://github.com/rohitkumarmanne-442/foreman/blob/main/src/test/smoke.test.ts)
-[![node](https://img.shields.io/badge/node-%E2%89%A518-informational)](https://nodejs.org)
-[![works with](https://img.shields.io/badge/works_with-any_agent-ff9f43)](#connect-your-agent)
-[![local-first](https://img.shields.io/badge/local--first-no_telemetry-8b93a7)](#local-first-by-design)
-[![license](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
+[![npm](https://img.shields.io/npm/v/foremanjs?color=5b8cff&label=npm)](https://www.npmjs.com/package/foremanjs) [![tests](https://img.shields.io/badge/tests-36%2F36_passing-3ddc97)](https://github.com/rohitkumarmanne-442/foreman/blob/main/src/test/smoke.test.ts) [![node](https://img.shields.io/badge/node-%E2%89%A518-informational)](https://nodejs.org) [![works with](https://img.shields.io/badge/works_with-any_agent-ff9f43)](#connect-your-agent) [![local-first](https://img.shields.io/badge/local--first-no_telemetry-8b93a7)](#local-first-by-design) [![license](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
 
 </div>
 
