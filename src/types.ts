@@ -82,6 +82,9 @@ export interface FileTouch {
   touches?: number;
   lines_before?: number;
   lines_after?: number;
+  /** signed net whole-file line change (esp. for edits, where lines_after may
+   *  be unknown because we never saw the full post-edit file) */
+  lines_delta?: number;
   edits?: Array<{ old: string; new: string }>; // surgical changes, in order
   before_sample?: string; // full-file rewrite: content before
   after_sample?: string; // full-file rewrite: content after
@@ -100,6 +103,8 @@ export interface ReviewCard {
   review: ReviewStatus;
   /** reviewer's note, set when flagging — fed back to the agent via `foreman brief` */
   review_note?: string;
+  /** approved automatically by Adaptive Autopilot (trusted agent + low risk) */
+  autopilot?: boolean;
   /** teammate name when this card was imported from a team pack */
   origin?: string;
   agent: string;

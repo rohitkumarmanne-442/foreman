@@ -20,12 +20,15 @@ export interface ForemanConfig {
   notify_webhook?: string;
   /** Create a Jira issue when flagging a card (token read from the env var named in token_env). */
   jira?: { base_url: string; email: string; project: string; token_env?: string };
+  /** Adaptive Autopilot — auto-approve LOW-risk sessions from agents that have
+   * earned trust, so review effort shrinks as agents keep proving themselves. */
+  autopilot?: { enabled: boolean; min_sessions: number; min_verified_pct: number };
 }
 
 /** Fields the settings UI may write. Everything else is CLI/file-only. */
 export const EDITABLE_FIELDS = [
   "ignore", "disable_rules", "mass_rewrite_min_lines", "mass_rewrite_ratio",
-  "notify_command", "notify_webhook", "jira",
+  "notify_command", "notify_webhook", "jira", "autopilot",
 ] as const;
 
 export function saveConfig(patch: Partial<ForemanConfig>): ForemanConfig {
@@ -48,6 +51,7 @@ export const DEFAULTS: ForemanConfig = {
   disable_rules: [],
   mass_rewrite_min_lines: 50,
   mass_rewrite_ratio: 0.4,
+  autopilot: { enabled: false, min_sessions: 5, min_verified_pct: 80 },
 };
 
 export const CONFIG_PATH = () => path.join(FOREMAN_HOME, "config.json");

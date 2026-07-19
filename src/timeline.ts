@@ -1,6 +1,7 @@
 import { readEvents } from "./journal.js";
 import { isVerificationCommand } from "./claims.js";
 import { isIgnored } from "./config.js";
+import { editLineDelta } from "./lines.js";
 import type { ForemanEvent, PreToolData, SessionEndData, ToolData } from "./types.js";
 
 /** One entry in a session's chronological activity feed. */
@@ -15,6 +16,7 @@ export interface TimelineItem {
   after_sample?: string;
   lines_before?: number;
   lines_after?: number;
+  lines_delta?: number;
   // command
   command?: string;
   ok?: boolean;
@@ -60,6 +62,13 @@ export function buildTimeline(session: string, events?: ForemanEvent[]): Timelin
           if (d.content_sample !== undefined) item.after_sample = d.content_sample;
           if (d.lines_after !== undefined) item.lines_after = d.lines_after;
           lastPre.delete(path); // consumed — the next Write needs its own snapshot
+        } else if (d.edits?.length) {
+          // edits give no post-edit file size; derive an exact before→after
+          const pre = lastPre.get(path);
+          if (pre?.exists) item.lines_before = pre.lines;
+          const net = editLineDelta(d.edits);
+          item.lines_delta = net;
+          if (item.lines_before !== undefined) item.lines_after = Math.max(0, item.lines_before + net);
         }
         items.push(item);
       } else if (d.command) {

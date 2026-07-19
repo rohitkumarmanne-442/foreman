@@ -3,8 +3,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { buildCards } from "./cards.js";
+import { runAutopilot } from "./autopilot.js";
 import { buildTimeline } from "./timeline.js";
-import { readEvents } from "./journal.js";
+import { readEvents, appendEvent } from "./journal.js";
 import { setReview, setDismissed } from "./reviews.js";
 import { verifyReceipt, type ReceiptBody } from "./mcp/receipts.js";
 import { toReceiptBody } from "./verifyall.js";
@@ -41,6 +42,8 @@ function receiptRows() {
       journaled_at: e.ts,
       chained: body.prev !== undefined,
       signature_valid: verifyReceipt(body, d.sig, d.pk),
+      surface: (e.data as { surface?: string }).surface === "web" ? "web" : "local",
+      preview: (e.data as { preview?: string }).preview,
     };
   });
 }
@@ -65,6 +68,9 @@ export function startServer(port = DEFAULT_PORT): http.Server {
         res.writeHead(200, { "content-type": "image/png", "cache-control": "public, max-age=86400" });
         res.end(png);
       } else if (url.pathname === "/api/cards") {
+        // Adaptive Autopilot: auto-approve earned low-risk sessions, then
+        // rebuild so the response reflects the approvals (no-op unless enabled).
+        runAutopilot(buildCards());
         send(200, JSON.stringify(buildCards()));
       } else if (url.pathname === "/api/receipts") {
         send(200, JSON.stringify(receiptRows()));
@@ -109,6 +115,25 @@ export function startServer(port = DEFAULT_PORT): http.Server {
             if (typeof session !== "string" || typeof rule !== "string") { send(400, JSON.stringify({ error: "bad request" })); return; }
             setDismissed(session, rule, undo === true);
             send(200, JSON.stringify({ ok: true }));
+          } catch (e) { send(400, JSON.stringify({ error: String(e) })); }
+        });
+        return;
+      } else if (url.pathname === "/api/prove" && req.method === "POST") {
+        readBody(req, async (err, body) => {
+          if (err) { send(err === "overflow" ? 413 : 400, JSON.stringify({ error: err })); return; }
+          try {
+            const { session } = JSON.parse(body);
+            const card = buildCards().find((c) => c.session === session);
+            if (!card) { send(404, JSON.stringify({ error: "no such session" })); return; }
+            const { detectVerifyCommand, runProveAsync } = await import("./prove.js");
+            // command is derived server-side from the repo's config — the client
+            // cannot inject a command
+            const vc = detectVerifyCommand(card.cwd);
+            if (!vc) { send(200, JSON.stringify({ detected: false, message: "No verification command found for this repo (package.json test/build, Makefile, pytest, cargo, go)." })); return; }
+            const r = await runProveAsync(card.cwd, vc);
+            appendEvent({ agent: "foreman-prove", session, cwd: card.cwd, kind: "tool",
+              data: { command: vc.command, ok: r.ok, description: "foreman prove — verification run" } });
+            send(200, JSON.stringify({ detected: true, ok: r.ok, command: r.command, source: r.source, ms: r.ms, output: r.output.slice(-3000) }));
           } catch (e) { send(400, JSON.stringify({ error: String(e) })); }
         });
         return;

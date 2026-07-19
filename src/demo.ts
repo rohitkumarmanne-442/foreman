@@ -46,9 +46,12 @@ export function seedDemo(): void {
   appendEvent({ agent: "claude-code", session: s3, cwd: cwd3, kind: "pre_tool", ts: minsAgo(120),
     data: { tool: "Edit", file: "src/components/Header.tsx", exists: true, lines: 88 } });
   appendEvent({ agent: "claude-code", session: s3, cwd: cwd3, kind: "tool", ts: minsAgo(119),
-    data: { tool: "Edit", ok: true, file: "src/components/Header.tsx",
+    data: { tool: "MultiEdit", ok: true, file: "src/components/Header.tsx",
       content_sample: '<nav aria-label="Main navigation">',
-      edits: [{ old: "<nav>", new: '<nav aria-label="Main navigation">' }] } });
+      edits: [
+        { old: "<nav>", new: '<nav aria-label="Main navigation">' },
+        { old: "      <Logo />", new: '      <a className="skip-link" href="#main">Skip to content</a>\n      <Logo />\n      <SearchButton />\n      <ThemeToggle />' },
+      ] } });
   appendEvent({ agent: "claude-code", session: s3, cwd: cwd3, kind: "tool", ts: minsAgo(118),
     data: { tool: "Bash", ok: true, command: "npm run build && npm test", description: "Build and test" } });
   appendEvent({ agent: "claude-code", session: s3, cwd: cwd3, kind: "session_end", ts: minsAgo(117),
@@ -69,6 +72,21 @@ export function seedDemo(): void {
   mk("create_issue", true, 420, 45);
   mk("list_pull_requests", true, 180, 44);
   mk("merge_pull_request", false, 950, 43);
+
+  // ── 4b. Web-agent MCP traffic (via `foreman track`) — shows site/data ──
+  const mkWeb = (server: string, tool: string, preview: string, ms: number, minutes: number): void => {
+    const body: ReceiptBody = {
+      receipt_id: crypto.randomUUID(), ts: minsAgo(minutes), server,
+      method: "tools/call", tool, params_hash: sha256(canonical({ demo: preview })),
+      result_hash: sha256(canonical({ ok: true })), ms, ok: true,
+    };
+    const { sig, pk } = signReceipt(body);
+    appendEvent({ agent: "mcp-proxy", session: "demo-web-mcp", cwd: process.cwd(), kind: "mcp_call",
+      ts: body.ts, data: { ...body, sig, pk, surface: "web", preview } });
+  };
+  mkWeb("web-fetch", "fetch_url", "url=https://docs.stripe.com/api/charges", 240, 8);
+  mkWeb("web-search", "search", "query=production checkout latency spike", 180, 7);
+  mkWeb("atlassian", "create_issue", "project=OPS  summary=Investigate checkout regression", 320, 6);
   appendEvent({ agent: "mcp-proxy", session: mcpSession, cwd: process.cwd(), kind: "mcp_drift", ts: minsAgo(42),
     data: { server: "demo-github", baseline_hash: "a".repeat(64), current_hash: "b".repeat(64),
       added: [], removed: [], changed: ["create_issue"] } });

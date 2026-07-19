@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { buildCards } from "./cards.js";
 import { sameRepo } from "./feedback.js";
+import { lineCountText } from "./lines.js";
 import type { ReviewCard } from "./types.js";
 
 function fmtSpan(start: string, end: string): string {
@@ -97,10 +98,13 @@ export function buildPrComment(card: ReviewCard): string {
   if (card.files.length) {
     const rows = card.files.map((f) => {
       const cut =
-        f.action === "write" && (f.lines_before ?? 0) >= 50 && (f.lines_after ?? 0) < (f.lines_before ?? 0) * 0.4;
-      return `| \`${f.path}\` | ${f.action}${(f.touches ?? 1) > 1 ? ` ×${f.touches}` : ""} | ${f.lines_before ?? "—"} → ${f.lines_after ?? "—"}${cut ? " ⚠️" : ""} | ${fmtTs(f.last_ts)} |`;
+        f.lines_before !== undefined &&
+        f.lines_after !== undefined &&
+        f.lines_before >= 50 &&
+        f.lines_after < f.lines_before * 0.4;
+      return `| \`${f.path}\` | ${f.action}${(f.touches ?? 1) > 1 ? ` ×${f.touches}` : ""} | ${lineCountText(f)}${cut ? " ⚠️" : ""} | ${fmtTs(f.last_ts)} |`;
     });
-    const header = ["| File | Action | Lines | Last edited |", "|---|---|---|---|"];
+    const header = ["| File | Action | Lines (before → after) | Last edited |", "|---|---|---|---|"];
     lines.push(`### Files touched (${card.files.length}) — most recent first`, "");
     if (rows.length <= 12) lines.push(...header, ...rows, "");
     else {

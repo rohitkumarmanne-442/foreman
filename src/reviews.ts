@@ -9,6 +9,8 @@ export interface ReviewEntry {
   status: ReviewStatus;
   ts: string;
   note?: string;
+  /** approved automatically by Adaptive Autopilot (trusted agent + low risk). */
+  autopilot?: boolean;
 }
 
 export function loadReviews(): Record<string, ReviewEntry> {
@@ -46,4 +48,14 @@ export function setReview(session: string, status: ReviewStatus, note?: string):
     if (trimmed) all[session].note = trimmed;
   }
   fs.writeFileSync(FILE(), JSON.stringify(all, null, 2), "utf8");
+}
+
+/** Approve a session on behalf of Adaptive Autopilot (only if not already reviewed). */
+export function setAutoApproved(session: string): boolean {
+  ensureDirs();
+  const all = loadReviews();
+  if (all[session]) return false; // never override a human decision
+  all[session] = { status: "approved", ts: new Date().toISOString(), autopilot: true };
+  fs.writeFileSync(FILE(), JSON.stringify(all, null, 2), "utf8");
+  return true;
 }

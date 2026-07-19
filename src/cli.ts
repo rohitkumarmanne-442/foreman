@@ -11,6 +11,7 @@ import { handleCursorHook, installCursorHooks, uninstallCursorHooks } from "./ho
 import { runProxy, trustServer } from "./mcp/proxy.js";
 import { startServer } from "./server.js";
 import { buildCards } from "./cards.js";
+import { lineCountText } from "./lines.js";
 import { readEvents } from "./journal.js";
 import { verifyReceipt, type ReceiptBody } from "./mcp/receipts.js";
 import { FOREMAN_HOME } from "./paths.js";
@@ -21,8 +22,10 @@ const HELP = `
   🧑‍🏭 foreman — the review inbox for your AI workforce
 
   GET STARTED
+    foreman start                ⭐ the one command — turns on change tracking + MCP
+                                 tracking + the inbox, for every agent. Run this first.
     foreman init [--agent claude|cursor|gemini|opencode|all] [--global]
-                                 install native hooks (default: all agents, this repo)
+                                 install just the change-tracking hooks (start does this)
     foreman ui [--port 4517]     open the review inbox (reuses a running server;
                                  always opens your browser)
     foreman shortcut             Start Menu + Desktop shortcut (Win) / launcher (Linux)
@@ -44,8 +47,16 @@ const HELP = `
     foreman ingest               journal normalized JSON events from ANY tool (stdin)
 
   MCP ATTESTATION
+    foreman track add <name> <mcp-url>
+                                 register an MCP server to track (local or web)
+    foreman track                ONE relay in front of EVERY registered server —
+                                 point any agent at http://127.0.0.1:4599/<name>
+    foreman track ls | rm <name> list or remove tracked servers
+    foreman wire [--dry-run]     auto-attest EVERY MCP server in your agents'
+                                 configs (Claude/Cursor/Windsurf) — no URL-pasting
+    foreman unwire               restore the original configs
     foreman wrap --name <srv> -- <command...>
-                                 run an MCP server behind the attestation proxy
+                                 run a single stdio MCP server behind the proxy
     foreman trust <srv>          accept a server's current tools as the new baseline
     foreman verify               verify every receipt signature + chain continuity
 
@@ -206,6 +217,77 @@ async function main(): Promise<void> {
       process.exit(1);
     }
     return;
+  }
+
+  if (cmd === "start") {
+    // ── The one command. Turns on everything important, no per-piece setup. ──
+    // 1) CHANGE TRACKING — global agent hooks (idempotent). These fire on every
+    //    agent action and persist even after this process stops.
+    const agents: string[] = [];
+    const tryInstall = (label: string, fn: () => string) => {
+      try { fn(); agents.push(label); } catch { /* agent not present — skip */ }
+    };
+    tryInstall("Claude Code", () => installClaudeCodeHooks({ global: true }));
+    tryInstall("Cursor", () => installCursorHooks({ global: true }));
+    const { installGeminiHooks } = await import("./hooks/gemini.js");
+    tryInstall("Gemini CLI", () => installGeminiHooks({ global: true }));
+    const { installOpenCodeAdapter } = await import("./hooks/opencode.js");
+    tryInstall("OpenCode", () => installOpenCodeAdapter({ global: true }));
+
+    // 1b) UNIVERSAL coverage — quietly watch THIS repo so ANY other IDE/agent
+    //     (Windsurf, JetBrains, Copilot-in-editor, a web agent editing local
+    //     files…) is tracked here too, not just the four with native hooks.
+    let watchLabel = "";
+    try {
+      const { createWatchState, pollOnce, endWatchSession } = await import("./watch.js");
+      const ws = createWatchState(process.cwd(), "watch");
+      // prime: record current file hashes WITHOUT journaling, so only edits
+      // made AFTER start become review cards
+      pollOnce(ws, (() => undefined) as unknown as Parameters<typeof pollOnce>[1]);
+      const timer = setInterval(() => { try { pollOnce(ws); } catch { /* transient git */ } }, 3000);
+      const stopWatch = () => { clearInterval(timer); try { endWatchSession(ws); } catch { /* nothing to close */ } };
+      process.on("SIGINT", () => { stopWatch(); process.exit(0); });
+      process.on("SIGTERM", stopWatch);
+      watchLabel = path.basename(process.cwd());
+    } catch { /* cwd isn't a git repo — native hooks still cover the 4 agents everywhere */ }
+
+    // 2) MCP TRACKING — one relay in front of every registered server.
+    const { loadServers } = await import("./servers.js");
+    const { runTrackRelay, connectorUrl } = await import("./track.js");
+    const servers = loadServers();
+    let relayPort = 0;
+    if (servers.length) {
+      const r = await runTrackRelay(servers, Number(arg("--track-port") ?? 4599));
+      relayPort = r.port;
+    }
+
+    // 3) INBOX — serve + open it.
+    const uiPort = Number(arg("--port") ?? process.env.FOREMAN_PORT ?? loadConfig().port);
+    startServer(uiPort);
+    const uiUrl = `http://127.0.0.1:${uiPort}`;
+
+    // ── one clean status ──
+    console.log(`\n  🧑‍🏭  Foreman is on.\n`);
+    console.log(`  ✓ Change tracking   native hooks: ${agents.length ? agents.join(", ") : "none detected"} — every edit journaled (persists)`);
+    if (watchLabel) console.log(`  ✓ Universal watch   ${watchLabel}/ — ANY other IDE or agent editing here is tracked too`);
+    else console.log(`  • Universal watch   run inside a git repo to also track non-native agents (or: foreman watch <path>)`);
+    if (servers.length) {
+      console.log(`  ✓ MCP tracking      relaying ${servers.length} server${servers.length === 1 ? "" : "s"} on 127.0.0.1:${relayPort}`);
+      for (const s of servers) console.log(`      • ${s.name.padEnd(14)} point your agent at →  ${connectorUrl(relayPort, s.name)}`);
+    } else {
+      console.log(`  • MCP tracking      no servers yet — add one:  foreman track add <name> <mcp-url>`);
+    }
+    const { countUnwired } = await import("./wire.js");
+    const unwired = countUnwired();
+    if (unwired) console.log(`  • Attest MCP        ${unwired} MCP server(s) in your agents aren't attested yet — run:  foreman wire`);
+    console.log(`  ✓ Inbox             ${uiUrl}\n`);
+    console.log(`  Change tracking keeps running in the background. This window hosts the inbox + MCP relay — Ctrl+C to stop those.\n`);
+
+    const opener =
+      process.platform === "win32" ? ["cmd", ["/c", "start", "", uiUrl]] :
+      process.platform === "darwin" ? ["open", [uiUrl]] : ["xdg-open", [uiUrl]];
+    try { spawn(opener[0] as string, opener[1] as string[], { stdio: "ignore", detached: true }).unref(); } catch { /* headless */ }
+    return; // keeps running (inbox + relay)
   }
 
   if (cmd === "init") {
@@ -382,6 +464,119 @@ async function main(): Promise<void> {
     return; // keeps running until the wrapped server exits
   }
 
+  if (cmd === "track") {
+    const { loadServers, addServer, removeServer } = await import("./servers.js");
+    const sub = process.argv[3];
+    if (sub === "add") {
+      const name = process.argv[4], url = process.argv[5];
+      if (!name || !url) { console.error("usage: foreman track add <name> <mcp-url>"); process.exit(1); }
+      try { addServer(name, url); console.log(`✅ tracking "${name}" → ${url}`); }
+      catch (e) { console.error(`✗ ${e instanceof Error ? e.message : e}`); process.exit(1); }
+      console.log(`   start the relay:  foreman track`);
+      return;
+    }
+    if (sub === "rm" || sub === "remove") {
+      const name = process.argv[4];
+      if (!name) { console.error("usage: foreman track rm <name>"); process.exit(1); }
+      console.log(removeServer(name) ? `✅ stopped tracking "${name}"` : `no server named "${name}"`);
+      return;
+    }
+    if (sub === "ls" || sub === "list") {
+      const list = loadServers();
+      if (!list.length) { console.log("No MCP servers registered yet.  Add one:  foreman track add <name> <mcp-url>"); return; }
+      for (const s of list) console.log(`  ${s.name.padEnd(16)} ${s.url}`);
+      return;
+    }
+    // no sub-command → run the relay for every registered server
+    const { runTrackRelay, trackBanner } = await import("./track.js");
+    const servers = loadServers();
+    if (!servers.length) {
+      console.log("No MCP servers registered yet — nothing to track.\n");
+      console.log("  Register your servers, then run `foreman track`:");
+      console.log("    foreman track add github https://api.githubcopilot.com/mcp/");
+      console.log("    foreman track add jira   https://mcp.atlassian.com/v1/sse");
+      return;
+    }
+    const publicBase = arg("--public-url"); // set when fronted by a tunnel
+    const { port } = await runTrackRelay(servers, Number(arg("--port") ?? 4599));
+    console.log(trackBanner(port, servers, publicBase));
+    console.log("\n  Ctrl+C to stop.");
+    return; // keeps running
+  }
+
+  if (cmd === "wire" || cmd === "unwire") {
+    const { discoverConfigs, wireConfig, unwireConfig } = await import("./wire.js");
+    const { fileURLToPath } = await import("node:url");
+    const cliPath = fileURLToPath(import.meta.url);
+    const targets = discoverConfigs();
+    if (!targets.length) {
+      console.log("No agent MCP configs found (Claude Desktop / Claude Code / Cursor / Windsurf).");
+      console.log("Add an MCP server to your agent first, then re-run  foreman wire.");
+      return;
+    }
+    if (cmd === "unwire") {
+      let total = 0;
+      for (const t of targets) {
+        const r = unwireConfig(t.path);
+        if (r.restored.length) { console.log(`  ${t.agent}: restored ${r.restored.join(", ")}`); total += r.restored.length; }
+      }
+      console.log(total ? `\n✅ Un-wired ${total} MCP server(s) — back to their originals.` : "Nothing was wired.");
+      return;
+    }
+    const dry = process.argv.includes("--dry-run");
+    console.log(dry
+      ? "🧑‍🏭 foreman wire — DRY RUN (no files changed)\n"
+      : "🧑‍🏭 foreman wire — routing your agents' MCP servers through Foreman\n");
+    let wired = 0;
+    for (const t of targets) {
+      const r = wireConfig(t.path, process.execPath, cliPath, dry);
+      const parts: string[] = [];
+      if (r.wired.length) parts.push(`wired ${r.wired.join(", ")}`);
+      if (r.already.length) parts.push(`already ${r.already.length}`);
+      if (r.skipped.length) parts.push(`skipped ${r.skipped.join(", ")}`);
+      if (parts.length) console.log(`  ${t.agent.padEnd(18)} ${parts.join(" · ")}`);
+      wired += r.wired.length;
+    }
+    console.log(wired
+      ? `\n✅ ${wired} MCP server(s) now attested. Restart your agent, then watch:  foreman ui → MCP Receipts\n   Backups saved as *.foreman-bak · undo any time:  foreman unwire`
+      : "\n✓ Nothing to wire — already done, or only remote servers (those use `foreman track`).");
+    return;
+  }
+
+  if (cmd === "prove") {
+    const { detectVerifyCommand, runProve } = await import("./prove.js");
+    const session = arg("--session");
+    let repo = process.cwd();
+    let sess: string | undefined;
+    if (session) {
+      const c = buildCards().find((x) => x.session === session);
+      if (!c) { console.error(`No session "${session}" found.`); process.exit(1); }
+      repo = c.cwd; sess = session;
+    } else if (process.argv[3] && !process.argv[3].startsWith("--")) {
+      repo = path.resolve(process.argv[3]);
+    }
+    const vc = detectVerifyCommand(repo);
+    if (!vc) {
+      console.log(`No verification command found in ${repo}`);
+      console.log(`   (looked for package.json test/build, Makefile, pytest, cargo, go)`);
+      return;
+    }
+    console.log(`🧑‍🏭 Prove it — running  ${vc.command}   [${vc.source}]\n`);
+    const r = runProve(repo, vc);
+    console.log(r.output.split("\n").slice(-20).join("\n"));
+    console.log(r.ok
+      ? `\n✅ PASSED in ${r.ms}ms — the claim now has evidence.`
+      : `\n❌ FAILED (exit ${r.code}) in ${r.ms}ms — the agent's claim did not hold up.`);
+    if (sess) {
+      const { appendEvent } = await import("./journal.js");
+      appendEvent({ agent: "foreman-prove", session: sess, cwd: repo, kind: "tool",
+        data: { command: vc.command, ok: r.ok, description: "foreman prove — verification run" } });
+      console.log(`   Attached to session ${sess} — refresh the inbox.`);
+    }
+    if (!r.ok) process.exit(1);
+    return;
+  }
+
   if (cmd === "trust") {
     const name = process.argv[3];
     if (!name) { console.error("usage: foreman trust <server>"); process.exit(1); }
@@ -442,7 +637,7 @@ async function main(): Promise<void> {
     for (const c of cards) {
       lines.push(`## ${c.cwd} — ${c.level.toUpperCase()} ${c.score} (${c.agent})`);
       lines.push(`- session \`${c.session}\` · ${c.started}${c.open ? " · still running" : ""} · review: **${c.review}**`);
-      if (c.files.length) lines.push(`- files: ${c.files.map((f) => `\`${f.path}\` (${f.lines_before ?? "—"}→${f.lines_after ?? "—"})`).join(", ")}`);
+      if (c.files.length) lines.push(`- files: ${c.files.map((f) => `\`${f.path}\` (${lineCountText(f)})`).join(", ")}`);
       if (c.commands.length) lines.push(`- commands: ${c.commands.length} (${c.commands.filter((k) => k.verification).length} verification)`);
       for (const cl of c.claims) lines.push(`- claim ${c.verified_claims ? "✅" : "❓"} “${cl}”`);
       for (const f of c.findings) lines.push(`- ⚠ **${f.rule}** — ${f.detail}`);

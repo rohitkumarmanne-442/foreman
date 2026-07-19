@@ -944,3 +944,188 @@ test("dismiss: false positives drop out and the score recalculates", async () =>
   const restored = buildCards().find((c) => c.session === session)!;
   assert.equal(restored.score, before.score, "undo restores the original score");
 });
+
+test("line counts: edit deltas are exact and never blank", async () => {
+  const { editLineDelta, fillEditLineCounts, lineCountText } = await import("../lines.js");
+
+  // a mid-line replacement changes 0 whole-file lines
+  assert.equal(editLineDelta([{ old: "foo", new: "bar" }]), 0);
+  // replacing 1 line's worth with 3 lines' worth = +2 whole-file lines
+  assert.equal(editLineDelta([{ old: "a", new: "a\nb\nc" }]), 2);
+  // deleting lines is negative; new-file (empty old) counts as added
+  assert.equal(editLineDelta([{ old: "a\nb\nc\nd", new: "a" }]), -3);
+  assert.equal(editLineDelta([{ old: "", new: "x\ny" }]), 2);
+  // MultiEdit sums across pairs
+  assert.equal(editLineDelta([{ old: "a", new: "a\nb" }, { old: "c\nd", new: "c" }]), 0);
+
+  // fill derives lines_after from a known lines_before, and always sets lines_delta
+  const withBefore: any = { path: "x.ts", action: "edit", lines_before: 120, edits: [{ old: "a\nb\nc\nd", new: "a" }] };
+  fillEditLineCounts(withBefore);
+  assert.equal(withBefore.lines_delta, -3);
+  assert.equal(withBefore.lines_after, 117, "120 - 3 = 117");
+
+  // no lines_before: still get a signed delta, never a blank
+  const noBefore: any = { path: "y.ts", action: "edit", edits: [{ old: "a", new: "a\nb\nc" }] };
+  fillEditLineCounts(noBefore);
+  assert.equal(noBefore.lines_after, undefined);
+  assert.equal(noBefore.lines_delta, 2);
+  assert.equal(lineCountText(noBefore), "+2 lines");
+
+  // text formatter never returns blank
+  assert.equal(lineCountText({ path: "a", action: "write", lines_before: 869, lines_after: 97 } as any), "869 → 97 (-772)");
+  assert.equal(lineCountText({ path: "a", action: "write", lines_after: 40 } as any), "new → 40");
+  assert.equal(lineCountText({ path: "a", action: "edit" } as any), "edited");
+});
+
+test("track: joinTarget maps /<name>/sub?q to the real endpoint", async () => {
+  const { joinTarget } = await import("../track.js");
+  assert.equal(joinTarget("https://mcp.example.com/v1/", [], ""), "https://mcp.example.com/v1/");
+  assert.equal(joinTarget("https://mcp.example.com/v1", ["messages"], "?x=1"), "https://mcp.example.com/v1/messages?x=1");
+  assert.equal(joinTarget("https://mcp.example.com/", [], "?s=1"), "https://mcp.example.com?s=1");
+});
+
+test("track: relay forwards to a registered server and attests it as web", async () => {
+  const http = await import("node:http");
+  const { addServer, loadServers, removeServer } = await import("../servers.js");
+  const { runTrackRelay, connectorUrl } = await import("../track.js");
+  const { readEvents } = await import("../journal.js");
+
+  // a mock streamable-HTTP MCP server
+  const upstream = http.createServer((req, res) => {
+    let b = ""; req.on("data", (c) => (b += c)); req.on("end", () => {
+      const msg = b ? JSON.parse(b) : {};
+      const result = msg.method === "tools/call"
+        ? { content: [{ type: "text", text: "ok" }] }
+        : { tools: [{ name: "t", description: "d", inputSchema: {} }] };
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result }));
+    });
+  });
+  await new Promise<void>((r) => upstream.listen(0, "127.0.0.1", () => r()));
+  const uport = (upstream.address() as any).port;
+
+  addServer("trackt", `http://127.0.0.1:${uport}/`);
+  assert.ok(loadServers().some((s) => s.name === "trackt"), "server registered");
+  const { port, server } = await runTrackRelay(loadServers().filter((s) => s.name === "trackt"), 0);
+
+  const call = (body: unknown) =>
+    fetch(connectorUrl(port, "trackt"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then((r) => r.json());
+  const listed = await call({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "t", arguments: {} } });
+  assert.equal(listed.result.content[0].text, "ok", "call forwarded + response relayed");
+
+  const bad = await fetch(`http://127.0.0.1:${port}/nope`, { method: "POST", body: "{}" }).then((r) => r.status);
+  assert.equal(bad, 404, "unknown server 404s");
+
+  await new Promise((r) => setTimeout(r, 120));
+  const webCalls = readEvents().filter((e) => e.kind === "mcp_call" && (e.data as any).server === "trackt");
+  assert.ok(webCalls.length >= 1, "receipt journaled for the tracked call");
+  assert.ok(webCalls.every((e) => (e.data as any).surface === "web"), "tracked calls tagged web");
+
+  server.close(); upstream.close(); removeServer("trackt");
+});
+
+test("preview: readable args, secrets redacted", async () => {
+  const { previewCall, redactValue } = await import("../preview.js");
+  // the target/site is surfaced and readable
+  assert.equal(previewCall("tools/call", { name: "fetch_url", arguments: { url: "https://example.com/api" } }), "url=https://example.com/api");
+  // priority ordering puts url/query first
+  assert.ok(previewCall("tools/call", { name: "x", arguments: { verbose: true, query: "foreman" } })!.startsWith("query=foreman"));
+  // secret-NAMED args are masked
+  assert.ok(previewCall("tools/call", { name: "x", arguments: { token: "hunter2xyz" } })!.includes("••••"));
+  // secret-SHAPED values are masked even under an innocent key
+  assert.equal(redactValue("data", "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"), "••••redacted••••");
+  // ordinary values pass through
+  assert.equal(redactValue("repo", "octocat/hello"), "octocat/hello");
+  // nothing meaningful → undefined
+  assert.equal(previewCall("tools/list", {}), undefined);
+});
+
+test("wire: wraps stdio MCP servers, skips remote, and unwires cleanly", async () => {
+  const os = await import("node:os");
+  const fsx = await import("node:fs");
+  const px = await import("node:path");
+  const { wireConfig, unwireConfig } = await import("../wire.js");
+  const dir = fsx.mkdtempSync(px.join(os.tmpdir(), "fm-wire-"));
+  const cfg = px.join(dir, "claude_desktop_config.json");
+  const original = {
+    mcpServers: {
+      github: { command: "npx", args: ["-y", "@modelcontextprotocol/server-github"], env: { GITHUB_TOKEN: "x" } },
+      remote: { url: "https://mcp.example.com/sse" },
+    },
+  };
+  fsx.writeFileSync(cfg, JSON.stringify(original, null, 2));
+
+  const r = wireConfig(cfg, "C:/node.exe", "C:/foreman/cli.js");
+  assert.deepEqual(r.wired, ["github"], "stdio server wired");
+  assert.ok(r.skipped.some((s) => s.startsWith("remote")), "remote server skipped");
+
+  const wired = JSON.parse(fsx.readFileSync(cfg, "utf8"));
+  assert.equal(wired.mcpServers.github.command, "C:/node.exe", "command → node");
+  assert.deepEqual(
+    wired.mcpServers.github.args,
+    ["C:/foreman/cli.js", "wrap", "--name", "github", "--", "npx", "-y", "@modelcontextprotocol/server-github"],
+    "args prefix the real command with foreman wrap");
+  assert.equal(wired.mcpServers.github.env.GITHUB_TOKEN, "x", "env preserved");
+  assert.ok(wired.mcpServers.github._foreman_wrapped, "marked wrapped");
+  assert.equal(wired.mcpServers.remote.url, "https://mcp.example.com/sse", "remote untouched");
+  assert.ok(fsx.existsSync(cfg + ".foreman-bak"), "backup written");
+
+  // idempotent
+  const r2 = wireConfig(cfg, "C:/node.exe", "C:/foreman/cli.js");
+  assert.deepEqual(r2.wired, [], "second wire is a no-op");
+  assert.deepEqual(r2.already, ["github"], "already-wired reported");
+
+  // unwire restores the exact original launch
+  unwireConfig(cfg);
+  const restored = JSON.parse(fsx.readFileSync(cfg, "utf8"));
+  assert.equal(restored.mcpServers.github.command, "npx", "command restored");
+  assert.deepEqual(restored.mcpServers.github.args, ["-y", "@modelcontextprotocol/server-github"], "args restored");
+  assert.ok(!restored.mcpServers.github._foreman_wrapped, "marker removed");
+});
+
+test("prove: detects the repo's verify command, runProve captures pass/fail", async () => {
+  const fsx = await import("node:fs");
+  const os = await import("node:os");
+  const px = await import("node:path");
+  const { detectVerifyCommand, runProve } = await import("../prove.js");
+
+  const dir = fsx.mkdtempSync(px.join(os.tmpdir(), "fm-prove-"));
+  fsx.writeFileSync(px.join(dir, "package.json"), JSON.stringify({ scripts: { test: "echo hi" } }));
+  assert.equal(detectVerifyCommand(dir)!.command, "npm test", "npm test detected");
+
+  const pass = runProve(dir, { command: "exit 0", source: "t" });
+  assert.equal(pass.ok, true, "exit 0 → pass");
+  const fail = runProve(dir, { command: "exit 3", source: "t" });
+  assert.equal(fail.ok, false, "exit 3 → fail");
+  assert.equal(fail.code, 3, "exit code captured");
+
+  const mk = fsx.mkdtempSync(px.join(os.tmpdir(), "fm-provemk-"));
+  fsx.writeFileSync(px.join(mk, "Makefile"), "test:\n\techo hi\n");
+  assert.equal(detectVerifyCommand(mk)!.command, "make test", "Makefile test target detected");
+
+  const none = fsx.mkdtempSync(px.join(os.tmpdir(), "fm-provenone-"));
+  assert.equal(detectVerifyCommand(none), null, "no verify command → null");
+});
+
+test("autopilot: trusted agent's low-risk sessions auto-approve; risky ones don't", async () => {
+  const { computeAgentTrust, runAutopilot } = await import("../autopilot.js");
+  const mk = (session: string, level: string, review: string, verified: boolean, open = false): any =>
+    ({ session, agent: "claude-code", level, score: level === "low" ? 0 : level === "critical" ? 100 : 50,
+       review, open, claims: ["x"], verified_claims: verified, cwd: "/r", started: "t", last_activity: "t" });
+  const cards: any[] = [];
+  for (let i = 0; i < 5; i++) cards.push(mk("ap-s" + i, "low", "approved", true));
+  cards.push(mk("ap-new-low", "low", "pending", true));   // should auto-approve
+  cards.push(mk("ap-new-high", "high", "pending", false)); // should NOT (not low)
+  cards.push(mk("ap-open", "low", "pending", true, true));  // should NOT (still running)
+
+  const cfg = { enabled: true, min_sessions: 5, min_verified_pct: 80 };
+  assert.ok(computeAgentTrust(cards, cfg).get("claude-code")!.eligible, "agent is eligible");
+
+  const approved = runAutopilot(cards, cfg);
+  assert.deepEqual(approved, ["ap-new-low"], "only the finished low-risk pending session auto-approved");
+  assert.deepEqual(runAutopilot([...cards], { enabled: false, min_sessions: 5, min_verified_pct: 80 }), [], "disabled → no-op");
+
+  // an agent that was ever flagged is not eligible
+  const tainted = [...cards.map((c) => ({ ...c })), mk("ap-bad", "high", "flagged", false)];
+  assert.ok(!computeAgentTrust(tainted, cfg).get("claude-code")!.eligible, "flagged history disqualifies");
+});

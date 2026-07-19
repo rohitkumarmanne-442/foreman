@@ -4,6 +4,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { appendEvent } from "../journal.js";
 import { BASELINES_DIR, ensureDirs } from "../paths.js";
+import { previewCall } from "../preview.js";
 import { sha256, canonical, signReceipt, receiptHash, withChain, type ReceiptBody } from "./receipts.js";
 
 /**
@@ -102,7 +103,11 @@ export function recordExchange(
   runId: string,
   req: { method: string; params: unknown; t0: number },
   resp: { result?: unknown; error?: unknown },
-  journal: typeof appendEvent
+  journal: typeof appendEvent,
+  /** how the call was captured: a local stdio server, or a relayed
+   *  (remote / web-reachable) one. UI grouping only — NOT part of the
+   *  signed receipt body, so verification is unaffected. */
+  surface: "local" | "web" = "local"
 ): void {
   const ms = Date.now() - req.t0;
   const ok = resp.error === undefined;
@@ -136,12 +141,14 @@ export function recordExchange(
       prev: head,
     };
     const { sig, pk } = signReceipt(body);
+    // readable, secret-redacted preview of the target/data — UI only, not signed
+    const preview = previewCall(req.method, req.params);
     journal({
       agent: "mcp-proxy",
       session: runId,
       cwd: process.cwd(),
       kind: "mcp_call",
-      data: { ...body, sig, pk },
+      data: { ...body, sig, pk, surface, ...(preview ? { preview } : {}) },
     });
     return { result: undefined, newHead: receiptHash(body, sig) };
   });

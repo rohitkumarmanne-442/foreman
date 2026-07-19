@@ -3,6 +3,7 @@ import { assessRisk } from "./risk.js";
 import { isVerificationCommand } from "./claims.js";
 import { loadReviews, loadDismissed } from "./reviews.js";
 import { isIgnored } from "./config.js";
+import { fillEditLineCounts } from "./lines.js";
 import type {
   ForemanEvent,
   ReviewCard,
@@ -86,6 +87,10 @@ export function buildCards(events?: ForemanEvent[]): ReviewCard[] {
       }
     }
 
+    // edits never gave us a post-edit file size; derive an exact before→after
+    // from the edit pairs so the UI always shows a clear line count
+    for (const t of filesMap.values()) fillEditLineCounts(t);
+
     const endData = (end?.data ?? { claims: [] }) as unknown as SessionEndData;
     const sessionDrifts = drifts.filter(
       (dr) => dr.ts >= first.ts && (!end || dr.ts <= end.ts)
@@ -141,6 +146,7 @@ export function buildCards(events?: ForemanEvent[]): ReviewCard[] {
     const r = reviews[c.session];
     c.review = r?.status ?? "pending";
     if (r?.note) c.review_note = r.note;
+    if (r?.autopilot) c.autopilot = true;
     // an approval is a watermark: it covers the work up to its ts, nothing after
     if (c.review === "approved" && r?.ts && c.last_activity > r.ts) {
       c.review = "pending";
