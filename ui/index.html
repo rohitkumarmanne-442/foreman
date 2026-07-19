@@ -257,6 +257,12 @@
   .icard span{font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.07em}
   #map{display:flex;flex-direction:column;position:relative;height:60vh;min-height:420px;border:1px solid var(--line);border-radius:var(--radius-lg);background:var(--panel);overflow:hidden;margin-bottom:26px}
   #maphead{display:flex;align-items:center;gap:16px;padding:16px 20px 6px;flex-wrap:wrap}
+  #mapstats{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto}
+  #mapstats .ms{display:flex;flex-direction:column;align-items:center;padding:6px 14px;border:1px solid var(--line);border-radius:11px;background:var(--panel2);min-width:64px}
+  #mapstats .ms b{font:700 18px var(--display);line-height:1.05}
+  #mapstats .ms span{font-size:9.5px;color:var(--dim);text-transform:uppercase;letter-spacing:.05em;margin-top:3px;white-space:nowrap}
+  #mapstats .ms.warn{border-color:rgba(255,84,104,.55);background:rgba(255,84,104,.09)}
+  #mapstats .ms.warn b{color:var(--critical)}
   #mapcv{flex:1;min-height:0;cursor:default}
   #maptip{position:absolute;display:none;background:var(--panel3);border:1px solid var(--line2);border-radius:9px;padding:9px 13px;font-size:12px;pointer-events:none;z-index:10;box-shadow:var(--shadow);max-width:340px}
   #maptip .mono{word-break:break-all}
@@ -496,17 +502,18 @@
   <div id="insbody"></div>
   <div id="map">
     <div id="maphead">
-      <div><h3 style="margin:0">🕸 Blast Radius — AI's live footprint on your code</h3><div class="sub" style="margin:3px 0 0">size = edit intensity · color = risk · hubs = sessions · drag to play, click for evidence</div></div>
+      <div style="flex:1;min-width:220px"><h3 style="margin:0">🕸 Blast Radius — where AI is concentrated, and where agents collide</h3><div class="sub" style="margin:3px 0 0">bigger = more edits · color = risk · a ⚠ red ring means two agents edited the same file · click any node for evidence</div></div>
+      <div id="mapstats"></div>
     </div>
     <canvas id="mapcv"></canvas>
     <div id="maptip"></div>
     <div id="mapinfo"></div>
     <div id="maplegend">
-      <span><i style="background:#6a95ff;border-radius:3px"></i>session hub</span>
-      <span><i style="background:#3d4a6b"></i>file</span>
-      <span><i style="background:#ffa14a"></i>risky file</span>
-      <span><i style="background:#ff5468;box-shadow:0 0 6px #ff5468"></i>critical file</span>
-      <span class="dim">click a file → its sessions · click a hub → the card</span>
+      <span><i style="background:#6a95ff;border-radius:3px"></i>session</span>
+      <span><i style="background:#48557a"></i>file</span>
+      <span><i style="background:#ffa14a"></i>risky</span>
+      <span><i style="background:#ff5468;box-shadow:0 0 6px #ff5468"></i>critical</span>
+      <span><i style="background:transparent;border:2px solid #ff5468;box-shadow:0 0 7px #ff5468;width:11px;height:11px"></i>collision — two agents, one file</span>
     </div>
   </div>
   </div>
@@ -759,97 +766,162 @@ function showTab(t){tab=t;
 }
 
 // ── Blast Radius: the live map of AI's footprint on your code ──────
-let mapAnim=null,mapNodes=[],mapEdges=[],mapHover=null;
+let mapAnim=null,mapNodes=[],mapEdges=[],mapHover=null,mapAlpha=1,mapStats={files:0,shared:0,collisions:0,sessions:0};
 function severityFor(path,set){
   const base=path.split(/[\\/]/).pop()||path;let sev=0;
   for(const c of set)for(const f of c.findings)
     if(f.detail.includes(path)||f.detail.includes(base))sev=Math.max(sev,f.severity);
   return sev;
 }
+function collisionSet(){
+  const s=new Set();
+  for(const c of (collisions||[])){if(c&&c.path){s.add(c.path);s.add(c.path.split(/[\\/]/).pop());}}
+  return s;
+}
 function buildGraph(){
   const real=cards.filter(c=>!c.session.startsWith('demo-'));
   const set=insFilter(real.length?real:cards);
+  const coll=collisionSet();
   const cv=$('mapcv'),W=cv.clientWidth||1200,H=cv.clientHeight||700;
   const old=new Map(mapNodes.map(n=>[n.key,n]));
   const nodes=[],edges=[],fileIdx=new Map();
   for(const c of set){
     const sk='s:'+c.session;
-    const s=old.get(sk)||{x:W/2+(Math.random()-.5)*300,y:H/2+(Math.random()-.5)*200,vx:0,vy:0};
-    nodes.push(Object.assign(s,{key:sk,type:'s',r:14+Math.min(10,c.files.length/4),card:c,
-      color:c.level==='critical'?'#ff5468':c.level==='high'?'#ffa14a':'#6a95ff',label:base(c.cwd)}));
+    const s=old.get(sk)||{x:W/2+(Math.random()-.5)*280,y:H/2+(Math.random()-.5)*180,vx:0,vy:0};
+    const label=base(c.cwd);
+    Object.assign(s,{key:sk,type:'s',r:16+Math.min(9,c.files.length/5),card:c,
+      color:c.level==='critical'?'#ff5468':c.level==='high'?'#ffa14a':'#6a95ff',label,
+      w:Math.max(78,label.length*7.4+36)});
+    nodes.push(s);
     for(const f of c.files){
       let n=fileIdx.get(f.path);
       if(!n){
         const fk='f:'+f.path,o=old.get(fk);
-        n=Object.assign(o||{x:s.x+(Math.random()-.5)*260,y:s.y+(Math.random()-.5)*260,vx:0,vy:0},
+        n=Object.assign(o||{x:s.x+(Math.random()-.5)*240,y:s.y+(Math.random()-.5)*240,vx:0,vy:0},
           {key:fk,type:'f',path:f.path,touches:0,sessions:0,sev:severityFor(f.path,set),last:f.last_ts||''});
         fileIdx.set(f.path,n);nodes.push(n);
       }
       n.touches+=f.touches||1;n.sessions++;
       if((f.last_ts||'')>n.last)n.last=f.last_ts||n.last;
-      edges.push([nodes.indexOf(s)>-1?s:s,n]);
-      edges[edges.length-1]=[s,n];
+      edges.push([s,n]);
     }
   }
+  let shared=0,collided=0;const fileNodes=[];
   for(const n of nodes)if(n.type==='f'){
-    n.r=5+Math.min(15,Math.sqrt(n.touches)*2.2);
-    n.color=n.sev>=4?'#ff5468':n.sev>=2?'#ffa14a':'#3d4a6b';
+    n.r=6+Math.min(16,Math.sqrt(n.touches)*2.3);
+    n.shared=n.sessions>=2; if(n.shared)shared++;
+    n.collided=coll.has(n.path)||coll.has(n.path.split(/[\\/]/).pop()); if(n.collided)collided++;
+    n.color=(n.collided||n.sev>=4)?'#ff5468':n.sev>=2?'#ffa14a':'#48557a';
+    fileNodes.push(n);
   }
-  mapNodes=nodes;mapEdges=edges;
+  // a proper graph, not a cloud: keep the files that matter — collisions, shared,
+  // risky, then the busiest — and note the rest rather than drawing 150 dots
+  const MAXF=48;let hidden=0,keep=null;
+  if(fileNodes.length>MAXF){
+    const sc=n=>(n.collided?4e6:0)+(n.shared?3e6:0)+n.sev*1e5+n.touches;
+    keep=new Set([...fileNodes].sort((a,b)=>sc(b)-sc(a)).slice(0,MAXF));
+    hidden=fileNodes.length-MAXF;
+  }
+  mapNodes=keep?nodes.filter(n=>n.type==='s'||keep.has(n)):nodes;
+  mapEdges=keep?edges.filter(e=>keep.has(e[1])):edges;
+  mapAlpha=1;
+  mapStats={files:fileIdx.size,shared,collisions:collided,sessions:set.length,hidden};
+}
+function renderMapStats(){
+  const el=$('mapstats');if(!el)return;
+  const s=mapStats;
+  el.innerHTML=
+    `<div class="ms"><b>${s.sessions}</b><span>sessions</span></div>`+
+    `<div class="ms"><b>${s.files}</b><span>files touched</span></div>`+
+    `<div class="ms"><b>${s.shared}</b><span>shared 2+</span></div>`+
+    `<div class="ms ${s.collisions?'warn':''}"><b>${s.collisions}</b><span>collisions</span></div>`;
 }
 function mapTick(){
-  const cv=$('mapcv'),W=cv.clientWidth,H=cv.clientHeight;
+  const cv=$('mapcv'),W=cv.clientWidth,H=cv.clientHeight,cx=W/2,cy=H*0.54,A=mapAlpha;
   for(let i=0;i<mapNodes.length;i++){const a=mapNodes[i];
-    a.vx+=(W/2-a.x)*0.0009;a.vy+=(H*0.52-a.y)*0.0009;
+    a.vx+=(cx-a.x)*0.0016*A;a.vy+=(cy-a.y)*0.0016*A;
     for(let j=i+1;j<mapNodes.length;j++){const b=mapNodes[j];
       let dx=a.x-b.x,dy=a.y-b.y,d2=dx*dx+dy*dy||1;
-      if(d2<52000){const f=Math.min(2.2,900/d2);const d=Math.sqrt(d2);dx/=d;dy/=d;
+      if(d2<62000){const d=Math.sqrt(d2),f=Math.min(1.7,1500/d2)*A;dx/=d;dy/=d;
         a.vx+=dx*f;a.vy+=dy*f;b.vx-=dx*f;b.vy-=dy*f;}
     }
   }
   for(const[a,b]of mapEdges){
     let dx=b.x-a.x,dy=b.y-a.y;const d=Math.sqrt(dx*dx+dy*dy)||1;
-    const f=(d-92)*0.004;dx/=d;dy/=d;
-    a.vx+=dx*f*d*0.01;a.vy+=dy*f*d*0.01;b.vx-=dx*f*d*0.01;b.vy-=dy*f*d*0.01;
+    const rest=a.type==='s'?120:96,disp=(d-rest)*0.009*A;dx/=d;dy/=d;
+    a.vx+=dx*disp;a.vy+=dy*disp;b.vx-=dx*disp;b.vy-=dy*disp;
   }
   for(const n of mapNodes){
     if(n!==mapDrag){
       const dx=n.x-mapMouse.x,dy=n.y-mapMouse.y,d2=dx*dx+dy*dy;
-      if(d2<12100&&d2>1){const d=Math.sqrt(d2),f=(110-d)*0.028/d;n.vx+=dx*f;n.vy+=dy*f;}
+      if(d2<11000&&d2>1){const d=Math.sqrt(d2),f=(105-d)*0.02/d;n.vx+=dx*f;n.vy+=dy*f;}
     }
-    n.vx*=0.86;n.vy*=0.86;n.x+=n.vx;n.y+=n.vy;
-    n.x=Math.max(30,Math.min((cv.clientWidth||1200)-30,n.x));n.y=Math.max(56,Math.min((cv.clientHeight||700)-46,n.y));}
+    n.vx*=0.83;n.vy*=0.83;n.x+=n.vx;n.y+=n.vy;
+    n.x=Math.max(46,Math.min((cv.clientWidth||1200)-46,n.x));n.y=Math.max(66,Math.min((cv.clientHeight||700)-44,n.y));}
+  if(mapAlpha>0.02)mapAlpha*=0.986;
 }
 function mapDraw(){
   const cv=$('mapcv'),dpr=window.devicePixelRatio||1;
   const W=cv.clientWidth,H=cv.clientHeight;
-  if(cv.width!==W*dpr){cv.width=W*dpr;cv.height=H*dpr;}
+  if(cv.width!==Math.round(W*dpr)){cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);}
   const x=cv.getContext('2d');x.setTransform(dpr,0,0,dpr,0,0);x.clearRect(0,0,W,H);
-  x.lineWidth=1;
-  for(const[a,b]of mapEdges){
-    x.strokeStyle=b.sev>=4?'rgba(255,84,104,.22)':b.sev>=2?'rgba(255,161,74,.18)':'rgba(106,149,255,.13)';
-    x.beginPath();x.moveTo(a.x,a.y);x.lineTo(b.x,b.y);x.stroke();
-  }
+  const cs=getComputedStyle(document.documentElement);
+  const txt=(cs.getPropertyValue('--text')||'#e8ecf5').trim();
+  const dim=(cs.getPropertyValue('--dim')||'#8d96ae').trim();
   const now=Date.now();
-  const big=[...mapNodes].filter(n=>n.type==='f').sort((a,b)=>b.r-a.r).slice(0,7);
-  for(const n of mapNodes){
-    const fresh=n.type==='f'&&n.last&&now-new Date(n.last)<600000;
-    x.shadowBlur=(n.sev>=4||n.type==='s'||fresh)?16:0;
-    x.shadowColor=n.color;
-    x.fillStyle=n.color;
-    x.beginPath();
-    if(n.type==='s'){x.roundRect(n.x-n.r,n.y-n.r,n.r*2,n.r*2,6);x.fill();
-      x.shadowBlur=0;x.fillStyle='#fff';x.font='700 10px Consolas';x.textAlign='center';x.fillText('AI',n.x,n.y+3.5);}
-    else{x.arc(n.x,n.y,n.r,0,7);x.fill();}
-    x.shadowBlur=0;
-    if(n===mapHover||n.type==='s'||big.includes(n)){
-      x.fillStyle=n===mapHover?'#ecf0f8':'#8d96ae';x.font='11px Segoe UI';x.textAlign='center';
-      x.fillText(n.type==='s'?n.label:(n.path.split(/[\\/]/).pop()||''),n.x,n.y-n.r-7);
-    }
+
+  if(!mapNodes.some(n=>n.type==='f')){
+    x.fillStyle=dim;x.font='13px Segoe UI';x.textAlign='center';
+    x.fillText('No AI file activity in this range yet — connect an agent (foreman start) and edits will map here.',W/2,H/2);
+    return;
   }
+
+  // curved edges, coloured by the file's risk; collision edges glow red
+  for(const e of mapEdges){const a=e[0],b=e[1];
+    const dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy)||1,mx=(a.x+b.x)/2,my=(a.y+b.y)/2;
+    const cpx=mx-dy/d*d*0.11,cpy=my+dx/d*d*0.11;
+    x.strokeStyle=b.collided?'rgba(255,84,104,.5)':b.sev>=4?'rgba(255,84,104,.26)':b.sev>=2?'rgba(255,161,74,.2)':'rgba(120,150,220,.12)';
+    x.lineWidth=b.collided?1.9:b.shared?1.3:1;
+    x.beginPath();x.moveTo(a.x,a.y);x.quadraticCurveTo(cpx,cpy,b.x,b.y);x.stroke();
+  }
+
+  // file nodes
+  for(const n of mapNodes){if(n.type!=='f')continue;
+    const fresh=n.last&&now-new Date(n.last)<600000;
+    x.save();
+    x.shadowBlur=(n.collided||n.sev>=4||fresh)?16:6;x.shadowColor=n.color;
+    x.fillStyle=n.color;x.beginPath();x.arc(n.x,n.y,n.r,0,7);x.fill();x.shadowBlur=0;
+    if(n.shared&&!n.collided){x.strokeStyle='rgba(232,236,245,.55)';x.lineWidth=1.5;x.beginPath();x.arc(n.x,n.y,n.r+3.5,0,7);x.stroke();}
+    if(n.collided){const p=1+0.16*Math.sin(now/360);x.strokeStyle='#ff5468';x.lineWidth=2.3;x.shadowBlur=13;x.shadowColor='#ff5468';
+      x.beginPath();x.arc(n.x,n.y,(n.r+5)*p,0,7);x.stroke();x.shadowBlur=0;}
+    x.restore();
+  }
+
+  // session chips (drawn over edges/files so the labels read clearly)
+  for(const n of mapNodes){if(n.type!=='s')continue;
+    const w=n.w,h=27;x.save();
+    x.shadowBlur=13;x.shadowColor=n.color;x.fillStyle=n.color+'26';
+    x.beginPath();x.roundRect(n.x-w/2,n.y-h/2,w,h,10);x.fill();x.shadowBlur=0;
+    x.strokeStyle=n.color;x.lineWidth=1.6;x.stroke();
+    x.fillStyle=txt;x.font='600 12px Segoe UI';x.textAlign='center';x.textBaseline='middle';
+    x.fillText('🧑‍🏭 '+n.label,n.x,n.y+0.5);x.textBaseline='alphabetic';x.restore();
+  }
+
+  // labels for the files that matter: collisions, shared, hotspots, hovered
+  const big=new Set([...mapNodes].filter(n=>n.type==='f').sort((a,b)=>b.r-a.r).slice(0,6));
+  for(const n of mapNodes){if(n.type!=='f')continue;
+    if(!(n===mapHover||n.collided||n.shared||big.has(n)))continue;
+    const bn=(n.collided?'⚠ ':'')+(n.path.split(/[\\/]/).pop()||''),fs=n===mapHover?12:11;
+    x.font=fs+'px Segoe UI';const tw=x.measureText(bn).width,ly=n.y-n.r-11;
+    x.fillStyle='rgba(6,9,17,.66)';x.beginPath();x.roundRect(n.x-tw/2-5,ly-fs/2-3,tw+10,fs+6,5);x.fill();
+    x.fillStyle=n===mapHover?txt:(n.collided?'#ff8a97':dim);x.textAlign='center';x.textBaseline='middle';
+    x.fillText(bn,n.x,ly);x.textBaseline='alphabetic';
+  }
+  if(mapStats.hidden){x.fillStyle=dim;x.font='11px Segoe UI';x.textAlign='right';
+    x.fillText('+'+mapStats.hidden+' more files — showing hotspots, shared & risky',W-16,H-15);x.textAlign='left';}
 }
 function startMap(){
-  buildGraph();
+  buildGraph();renderMapStats();
   cancelAnimationFrame(mapAnim);
   const loop=()=>{mapTick();mapDraw();mapAnim=requestAnimationFrame(loop);};
   loop();
@@ -867,6 +939,7 @@ function showFileInfo(n){
     <h4 class="mono">${esc(bn)}</h4>
     <div class="dim" style="font-size:11px;word-break:break-all">${esc(n.path)}</div>
     <div class="meta" style="margin-top:9px"><span><b>${n.touches}</b> edits</span><span><b>${sess.length}</b> session(s)</span>${n.last?`<span>last ${ago(n.last)}</span>`:''}</div>
+    ${(()=>{const col=(collisions||[]).find(c=>c.path===n.path||c.path.split(/[\\/]/).pop()===bn);if(!col)return '';return `<div class="finding s4" style="margin-top:11px;padding:9px 12px"><div class="frow"><span class="rule">⚠ collision</span><span style="font-size:12.5px">Edited by <b>${col.parties.map(p=>esc(AGENT_LABEL[p.agent]||p.agent)).join(', ')}</b> while both sessions were live — last write <b>${esc(AGENT_LABEL[col.last_writer.agent]||col.last_writer.agent)}</b> ${ago(col.last_writer.ts)}. Diff before trusting either side.</span></div></div>`;})()}
     ${finds.length?`<div style="margin-top:11px">${finds.slice(0,3).map(f=>`<div class="finding s${f.severity}" style="margin-bottom:6px;padding:8px 12px"><div class="frow"><span class="rule">${esc(f.rule)}</span><span style="font-size:12px">${esc(f.detail.slice(0,160))}</span></div></div>`).join('')}</div>`
       :`<div class="dim" style="font-size:12px;margin-top:11px">No findings involve this file — it's on the map because your agents edited it.</div>`}
     <h3 style="margin-top:15px">Review the session(s) that touched it</h3>
@@ -879,7 +952,7 @@ let mapMouse={x:-9999,y:-9999},mapDrag=null,mapDragMoved=0;
   cv.addEventListener('mousemove',e=>{
     const r=cv.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;
     mapMouse={x:mx,y:my};
-    if(mapDrag){mapDrag.x=mx;mapDrag.y=my;mapDrag.vx=0;mapDrag.vy=0;mapDragMoved+=Math.abs(e.movementX)+Math.abs(e.movementY);tip.style.display='none';return;}
+    if(mapDrag){mapDrag.x=mx;mapDrag.y=my;mapDrag.vx=0;mapDrag.vy=0;mapAlpha=1;mapDragMoved+=Math.abs(e.movementX)+Math.abs(e.movementY);tip.style.display='none';return;}
     mapHover=null;let best=500;
     for(const n of mapNodes){const d=(n.x-mx)**2+(n.y-my)**2;if(d<best&&d<(n.r+13)**2){best=d;mapHover=n;}}
     cv.style.cursor=mapHover?'grab':'default';
@@ -887,10 +960,10 @@ let mapMouse={x:-9999,y:-9999},mapDrag=null,mapDragMoved=0;
       tip.style.display='block';tip.style.left=Math.min(mx+18,r.width-350)+'px';tip.style.top=(my+14)+'px';
       tip.innerHTML=mapHover.type==='s'
         ?`<b>${esc(mapHover.label)}</b> · ${esc(AGENT_LABEL[mapHover.card.agent]||mapHover.card.agent)}<br><span class="dim">${mapHover.card.level} ${mapHover.card.score} · ${mapHover.card.files.length} files · ${ago(mapHover.card.last_activity||mapHover.card.started)} — click to open the card</span>`
-        :`<span class="mono">${esc(mapHover.path)}</span><br><span class="dim">${mapHover.touches} edit(s) · ${mapHover.sessions} session(s)${mapHover.last?' · '+ago(mapHover.last):''}${mapHover.sev?` · <span style="color:${mapHover.sev>=4?'var(--critical)':'var(--high)'}">involved in findings</span>`:''} — click for details, drag to play</span>`;
+        :`<span class="mono">${esc(mapHover.path)}</span><br><span class="dim">${mapHover.touches} edit(s) · ${mapHover.sessions} session(s)${mapHover.last?' · '+ago(mapHover.last):''}${mapHover.sev?` · <span style="color:${mapHover.sev>=4?'var(--critical)':'var(--high)'}">involved in findings</span>`:''}</span>${mapHover.collided?`<br><span style="color:var(--critical);font-weight:600">⚠ collision — two agents edited this while both were live</span>`:mapHover.shared?`<br><span class="dim">shared by ${mapHover.sessions} sessions</span>`:''}<br><span class="dim">click for details, drag to reposition</span>`;
     }else tip.style.display='none';
   });
-  cv.addEventListener('mousedown',()=>{if(mapHover){mapDrag=mapHover;mapDragMoved=0;cv.style.cursor='grabbing';}});
+  cv.addEventListener('mousedown',()=>{if(mapHover){mapDrag=mapHover;mapDragMoved=0;mapAlpha=1;cv.style.cursor='grabbing';}});
   window.addEventListener('mouseup',()=>{
     if(!mapDrag)return;
     const n=mapDrag;mapDrag=null;cv.style.cursor='default';
