@@ -59,6 +59,19 @@ export function seedDemo(): void {
   appendEvent({ agent: "claude-code", session: s3, cwd: cwd3, kind: "session_end", ts: minsAgo(117),
     data: { transcript: "", last_message: "Added the aria-label; build and tests pass.", claims: ["build and tests pass."] } });
 
+  // ── 3b. Collision: a SECOND agent editing the same app.py, same time ──
+  // Cursor touches checkout-service/app.py while the claude-code incident
+  // session above (minsAgo 18→15) is still live → last-writer-wins collision.
+  const sColl = "demo-collision";
+  appendEvent({ agent: "cursor", session: sColl, cwd: cwd1, kind: "pre_tool", ts: minsAgo(17),
+    data: { tool: "Edit", file: "app.py", exists: true, lines: 869 } });
+  appendEvent({ agent: "cursor", session: sColl, cwd: cwd1, kind: "tool", ts: minsAgo(16.5),
+    data: { tool: "Edit", ok: true, file: "app.py",
+      edits: [{ old: "def checkout(cart):", new: "def checkout_v2(cart, coupon=None):" }] } });
+  appendEvent({ agent: "cursor", session: sColl, cwd: cwd1, kind: "session_end", ts: minsAgo(16),
+    data: { transcript: "", last_message: "Renamed checkout() to checkout_v2() and added coupon support.",
+      claims: ["Renamed checkout() to checkout_v2()."] } });
+
   // ── 4. Attested MCP traffic + one rug pull ──
   const mcpSession = "demo-mcp-run";
   const mk = (tool: string, ok: boolean, ms: number, minutes: number): void => {

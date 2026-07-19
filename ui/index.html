@@ -627,7 +627,8 @@
   </div>
 </div>
 <script>
-let cards=[],receipts=[],shipped=[],selected=null,tab='inbox',filter='review',agentFilter='all',rcpSurface='all',proveResults={};
+let cards=[],receipts=[],shipped=[],collisions=[],selected=null,tab='inbox',filter='review',agentFilter='all',rcpSurface='all',proveResults={};
+function collisionsFor(session){return collisions.filter(c=>c.parties.some(p=>p.session===session));}
 const openDiffs=new Set();
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -1016,6 +1017,7 @@ function renderList(){
         <span><b>${c.commands.length}</b> commands</span>
         <span><b>${c.findings.length}</b> findings</span>
         ${c.claims.length?`<span>${c.verified_claims?'✅ verified':'⚠️ unverified'}</span>`:''}
+        ${collisionsFor(c.session).length?`<span style="color:var(--critical);font-weight:600" title="another agent edited the same file while this session was live — possible lost changes">⚠ collision</span>`:''}
       </div>
     </div>`).join('')||emptyList();
   renderDetail();
@@ -1202,6 +1204,7 @@ function renderDetail(){
       <span class="kbd-hint"><kbd>a</kbd> / <kbd>f</kbd></span>
     </div>
     ${c.reopened?`<div class="finding s3" style="margin-bottom:20px"><div class="frow"><span class="rule">↻ reopened</span><span><b>${c.new_changes||'New'} change${c.new_changes===1?'':'s'}</b> landed after your approval — it only covers what you saw. <a class="filelink" onclick="setDetailTab('timeline')">See exactly what's new →</a></span></div></div>`:''}
+    ${collisionsFor(c.session).map(col=>{const others=col.parties.filter(p=>p.session!==c.session);const lostMine=col.last_writer.session!==c.session;const sev=(col.concurrent_open||lostMine)?'s4':'s3';return `<div class="finding ${sev}" style="margin-bottom:20px"><div class="frow"><span class="rule">⚠ collision</span><span style="flex:1"><b class="mono">${esc(base(col.path))}</b> was also edited by <b>${others.map(o=>esc(AGENT_LABEL[o.agent]||o.agent)+(o.open?' (running)':'')).join(', ')}</b> while this session was live${col.concurrent_open?' — <b style="color:var(--critical)">both are still running right now</b>':''}. Last write: <b>${esc(AGENT_LABEL[col.last_writer.agent]||col.last_writer.agent)}</b> ${ago(col.last_writer.ts)}${lostMine?` — its version won, so this session’s edits may have been silently overwritten.`:'.'} <a class="filelink" onclick="setDetailTab('timeline')">See the timeline →</a></span></div></div>`;}).join('')}
     ${c.review==='flagged'&&c.review_note?`<div class="finding s4" style="margin-bottom:20px"><div class="frow"><span class="rule">your note</span><span>“${esc(c.review_note)}” <span class="dim">— fed to the agent's next session in this repo</span></span></div></div>`:''}
     <div class="score">
       <div class="ring" style="background:conic-gradient(${col} ${c.score*3.6}deg,var(--line) 0);"><div style="width:58px;height:58px;border-radius:50%;background:var(--panel);display:flex;align-items:center;justify-content:center">${c.score}</div></div>
@@ -1673,8 +1676,8 @@ async function saveSettings(){
 async function refresh(){
   if(tourActive)return; // freeze the UI while the walkthrough is pointing at it
   try{
-    const[c,r,sh]=await Promise.all([fetch('/api/cards').then(x=>x.json()),fetch('/api/receipts').then(x=>x.json()),fetch('/api/shipped').then(x=>x.json()).catch(()=>[])]);
-    cards=c;receipts=r;shipped=sh||[];
+    const[c,r,sh,co]=await Promise.all([fetch('/api/cards').then(x=>x.json()),fetch('/api/receipts').then(x=>x.json()),fetch('/api/shipped').then(x=>x.json()).catch(()=>[]),fetch('/api/collisions').then(x=>x.json()).catch(()=>[])]);
+    cards=c;receipts=r;shipped=sh||[];collisions=co||[];
     if(!selected&&visible().length)selected=visible()[0].session;
     renderStats();renderList();renderReceipts();
     $('n-shipped').textContent=shipped.length;

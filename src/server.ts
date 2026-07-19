@@ -6,6 +6,7 @@ import { buildCards } from "./cards.js";
 import { runAutopilot } from "./autopilot.js";
 import { buildShipped } from "./ship.js";
 import { buildManifest } from "./manifest.js";
+import { detectCollisions } from "./collisions.js";
 import { buildTimeline } from "./timeline.js";
 import { readEvents, appendEvent } from "./journal.js";
 import { setReview, setDismissed } from "./reviews.js";
@@ -76,6 +77,8 @@ export function startServer(port = DEFAULT_PORT): http.Server {
         send(200, JSON.stringify(buildCards()));
       } else if (url.pathname === "/api/shipped") {
         send(200, JSON.stringify(buildShipped()));
+      } else if (url.pathname === "/api/collisions") {
+        send(200, JSON.stringify(detectCollisions()));
       } else if (url.pathname === "/api/manifest") {
         const session = url.searchParams.get("session") ?? "";
         try {

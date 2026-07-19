@@ -1181,3 +1181,42 @@ test("manifest: ed25519 sign/verify round-trip, tamper detection, fingerprint", 
 
   assert.equal(verifyManifest({ hello: "world" }).ok, false, "non-manifest JSON is rejected");
 });
+
+test("collisions: two agents editing the same file during overlapping sessions", async () => {
+  const { detectCollisions } = await import("../collisions.js");
+  const ev = (agent: string, session: string, kind: string, ts: string, data: any): any =>
+    ({ v: 1, id: session + ts, ts, agent, session, cwd: "/repo", kind, data });
+
+  // claude-code owns app.py 10:00:00 → 10:01:00; cursor edits it at 10:00:45 (inside)
+  const overlapping = [
+    ev("claude-code", "collA", "pre_tool", "2026-01-01T10:00:00Z", { tool: "Write", file: "app.py", exists: true, lines: 100 }),
+    ev("claude-code", "collA", "tool", "2026-01-01T10:00:30Z", { tool: "Write", ok: true, file: "app.py", lines_after: 50 }),
+    ev("claude-code", "collA", "session_end", "2026-01-01T10:01:00Z", { claims: [] }),
+    ev("cursor", "collB", "tool", "2026-01-01T10:00:45Z", { tool: "Edit", ok: true, file: "app.py", edits: [{ old: "x", new: "y" }] }),
+    ev("cursor", "collB", "session_end", "2026-01-01T10:00:50Z", { claims: [] }),
+  ];
+  const cols = detectCollisions(overlapping);
+  assert.equal(cols.length, 1, "one collision detected");
+  assert.equal(cols[0].path, "app.py");
+  assert.equal(cols[0].parties.length, 2, "both sessions are parties");
+  assert.equal(cols[0].cross_agent, true, "different agents");
+  assert.equal(cols[0].last_writer.agent, "cursor", "cursor wrote last");
+
+  // same file, but the sessions ran an hour apart → sequential, not a collision
+  const sequential = [
+    ev("claude-code", "seqA", "pre_tool", "2026-01-01T10:00:00Z", { tool: "Write", file: "app.py", exists: true, lines: 100 }),
+    ev("claude-code", "seqA", "tool", "2026-01-01T10:00:10Z", { tool: "Write", ok: true, file: "app.py", lines_after: 50 }),
+    ev("claude-code", "seqA", "session_end", "2026-01-01T10:00:20Z", { claims: [] }),
+    ev("cursor", "seqB", "tool", "2026-01-01T11:00:10Z", { tool: "Edit", ok: true, file: "app.py", edits: [{ old: "x", new: "y" }] }),
+    ev("cursor", "seqB", "session_end", "2026-01-01T11:00:20Z", { claims: [] }),
+  ];
+  assert.equal(detectCollisions(sequential).length, 0, "sequential edits are not a collision");
+
+  // one session touching a file many times is never a self-collision
+  const solo = [
+    ev("claude-code", "solo", "tool", "2026-01-01T10:00:00Z", { tool: "Edit", ok: true, file: "app.py", edits: [{ old: "a", new: "b" }] }),
+    ev("claude-code", "solo", "tool", "2026-01-01T10:00:05Z", { tool: "Edit", ok: true, file: "app.py", edits: [{ old: "b", new: "c" }] }),
+    ev("claude-code", "solo", "session_end", "2026-01-01T10:00:10Z", { claims: [] }),
+  ];
+  assert.equal(detectCollisions(solo).length, 0, "a single session never collides with itself");
+});

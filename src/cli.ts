@@ -41,6 +41,8 @@ const HELP = `
     foreman brief [path]         print outstanding human flags for a repo (agents read this;
                                  injected automatically into Claude Code sessions)
     foreman gate [--level high]  exit 1 if unapproved risky sessions exist — for CI/pre-push
+    foreman collisions [--gate]  flag files two agents edited at the same time
+                                 (last-writer-wins may have silently dropped changes)
     foreman pr [--session id] [--pr N] [--print]
                                  post a session-evidence comment on the PR (gh), or --print it
     foreman manifest [--session id] [-o foreman.manifest.json]
@@ -560,6 +562,22 @@ async function main(): Promise<void> {
     }
     const unrev = ships.filter((s) => s.unreviewed).length;
     if (unrev) console.log(`\n⚠ ${unrev} of these reached prod without being approved. Review them:  foreman ui`);
+    return;
+  }
+
+  if (cmd === "collisions") {
+    const { detectCollisions } = await import("./collisions.js");
+    const cols = detectCollisions().filter((c) => !c.parties.every((p) => p.session.startsWith("demo-")) || process.argv.includes("--demo"));
+    if (!cols.length) { console.log("✅ No collisions — no two agents edited the same file at the same time."); return; }
+    console.log(`⚠ ${cols.length} collision(s) — the same file edited by concurrent sessions, newest first:\n`);
+    for (const c of cols) {
+      const who = c.parties.map((p) => `${p.agent}${p.open ? " (running)" : ""}`).join("  ✕  ");
+      console.log(`  ${c.path}`);
+      console.log(`     ${who}${c.concurrent_open ? "   ← BOTH STILL RUNNING" : ""}`);
+      console.log(`     last write: ${c.last_writer.agent} at ${new Date(c.last_writer.ts).toLocaleString()} — its version won; the other's edits may be gone.`);
+    }
+    console.log(`\n   Diff the file before trusting either side. Detail:  foreman ui`);
+    if (process.argv.includes("--gate") && cols.some((c) => !c.parties.every((p) => p.session.startsWith("demo-")))) process.exit(1);
     return;
   }
 
