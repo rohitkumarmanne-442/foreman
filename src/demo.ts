@@ -54,6 +54,8 @@ export function seedDemo(): void {
       ] } });
   appendEvent({ agent: "claude-code", session: s3, cwd: cwd3, kind: "tool", ts: minsAgo(118),
     data: { tool: "Bash", ok: true, command: "npm run build && npm test", description: "Build and test" } });
+  appendEvent({ agent: "claude-code", session: s3, cwd: cwd3, kind: "tool", ts: minsAgo(117.5),
+    data: { tool: "Bash", ok: true, command: "vercel deploy --prod", description: "Ship the docs site" } });
   appendEvent({ agent: "claude-code", session: s3, cwd: cwd3, kind: "session_end", ts: minsAgo(117),
     data: { transcript: "", last_message: "Added the aria-label; build and tests pass.", claims: ["build and tests pass."] } });
 

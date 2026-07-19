@@ -234,7 +234,12 @@
   .dline.add .dhl{background:rgba(67,204,143,.28)}
   .dmorebtn{display:block;width:100%;padding:7px;background:var(--sel);border:none;border-top:1px solid var(--line);color:var(--accent);font:11px var(--mono);cursor:pointer}
   .dmorebtn:hover{background:var(--hover)}
-  #receipts{flex:1;overflow-y:auto;padding:26px 34px;display:none}
+  #receipts,#shipped{flex:1;overflow-y:auto;padding:26px 34px;display:none}
+  .shiprow{cursor:pointer}
+  .shiprow:hover td{background:var(--hover)}
+  .shiprow.unrev td:first-child{box-shadow:inset 3px 0 var(--critical)}
+  .shipkind{font-weight:600;font-size:12.5px;white-space:nowrap}
+  .shipcmd{font-size:11px;color:var(--faint);margin-top:4px;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .sig-ok{color:var(--low);font-family:var(--mono);font-size:11px}
   .sig-bad{color:var(--critical);font-family:var(--mono);font-size:11px}
   .hash{font-family:var(--mono);font-size:11px;color:var(--faint)}
@@ -450,6 +455,10 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3l7 3v5c0 4-3 7-7 8-4-1-7-4-7-8V6l7-3z" stroke-linejoin="round"/><path d="M9 12l2 2 4-4" stroke-linecap="round" stroke-linejoin="round"/></svg>
       MCP Receipts <span class="n" id="n-receipts">0</span>
     </div>
+    <div class="nav" id="tab-shipped" onclick="showTab('shipped')" title="What agents pushed live">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 2c3 2 5 5 5 9l-1.5 6-3.5-2-3.5 2L5 11c0-4 2-7 5-9z" stroke-linejoin="round"/><path d="M9 21l1.5-3M15 21l-1.5-3" stroke-linecap="round"/><circle cx="12" cy="9" r="1.6"/></svg>
+      Shipped to Prod <span class="n" id="n-shipped">0</span>
+    </div>
     <div class="nav" id="tab-insights" onclick="showTab('insights')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 19V5M4 19h16M8 16l3-4 3 2 4-6" stroke-linecap="round" stroke-linejoin="round"/></svg>
       Insights
@@ -482,6 +491,7 @@
   <div id="resizer" title="drag to resize · double-click to collapse the list"></div>
   <div id="detail"></div>
   <div id="receipts"></div>
+  <div id="shipped"></div>
   <div id="insights">
   <div id="insbody"></div>
   <div id="map">
@@ -617,7 +627,7 @@
   </div>
 </div>
 <script>
-let cards=[],receipts=[],selected=null,tab='inbox',filter='review',agentFilter='all',rcpSurface='all',proveResults={};
+let cards=[],receipts=[],shipped=[],selected=null,tab='inbox',filter='review',agentFilter='all',rcpSurface='all',proveResults={};
 const openDiffs=new Set();
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -712,12 +722,15 @@ function toggleUses(){$('usesmodal').classList.toggle('show');}
 function showTab(t){tab=t;
   $('tab-inbox').classList.toggle('active',t==='inbox');
   $('tab-receipts').classList.toggle('active',t==='receipts');
+  $('tab-shipped').classList.toggle('active',t==='shipped');
   $('tab-insights').classList.toggle('active',t==='insights');
   $('listwrap').style.display=t==='inbox'?'flex':'none';
   $('resizer').style.display=t==='inbox'?'block':'none';
   $('detail').style.display=t==='inbox'?'block':'none';
   $('receipts').style.display=t==='receipts'?'block':'none';
+  $('shipped').style.display=t==='shipped'?'block':'none';
   $('insights').style.display=t==='insights'?'block':'none';
+  if(t==='shipped')renderShipped();
   if(t==='insights'){renderInsights();startMap();}else stopMap();
 }
 
@@ -1216,6 +1229,28 @@ function overviewHtml(c){
   `;
 }
 
+const SHIP_ICON={deployed:'🚀',published:'📦',released:'🏷️','force-pushed':'⚠️',pushed:'⬆️',merged:'🔀'};
+function renderShipped(){
+  const el=$('shipped'); if(!el)return;
+  const unrev=shipped.filter(s=>s.unreviewed).length;
+  el.innerHTML=`
+    <h2>Shipped to Production</h2>
+    <div class="sub">what your agents actually pushed live — deploys, publishes, releases, and pushes to main${unrev?` · <span class="fail">${unrev} reached prod without review</span>`:''}</div>
+    ${shipped.length?`
+    <table><tr><th>What</th><th>Where</th><th>Repo</th><th>Agent</th><th>Risk</th><th>Reviewed</th><th>When</th></tr>
+    ${shipped.map(s=>`<tr class="shiprow ${s.unreviewed?'unrev':''}" onclick="showTab('inbox');select('${esc(s.session)}')" title="open the session that shipped this">
+      <td><span class="shipkind">${SHIP_ICON[s.kind]||'🚀'} ${esc(s.kind)}</span>${s.ok?'':' <span class="fail" title="the command failed">✗</span>'}<div class="shipcmd mono">${esc(s.command)}</div></td>
+      <td class="dim">${esc(s.detail)}</td>
+      <td class="mono">${esc(s.repo)}</td>
+      <td class="dim">${esc(AGENT_LABEL[s.agent]||s.agent)}</td>
+      <td>${s.level?`<span class="badge b-${s.level}">${esc(s.level)}</span>`:'<span class="dim">—</span>'}</td>
+      <td>${s.review==='approved'?'<span class="ok">✓ approved</span>':s.review==='flagged'?'<span class="fail">⚑ flagged</span>':'<span class="fail">✗ not reviewed</span>'}</td>
+      <td class="dim" style="white-space:nowrap">${ago(s.ts)}</td></tr>`).join('')}</table>`
+    :`<div class="empty" style="height:280px"><div class="onboard" style="max-width:540px">
+       <h4>🚀 Nothing shipped to prod yet</h4>
+       <p style="font-size:13px;color:var(--dim)">The moment an agent <b style="color:var(--text)">deploys</b> (Vercel, Fly, k8s…), <b style="color:var(--text)">publishes</b> (npm, crates…), cuts a <b style="color:var(--text)">release</b>, or <b style="color:var(--text)">pushes to main</b>, it lands here — so you always know what went live, and whether anyone reviewed it first.</p>
+     </div></div>`}`;
+}
 function setRcpSurface(s){rcpSurface=s;renderReceipts();}
 function renderReceipts(){
   $('n-receipts').textContent=receipts.length;
@@ -1630,10 +1665,12 @@ async function saveSettings(){
 async function refresh(){
   if(tourActive)return; // freeze the UI while the walkthrough is pointing at it
   try{
-    const[c,r]=await Promise.all([fetch('/api/cards').then(x=>x.json()),fetch('/api/receipts').then(x=>x.json())]);
-    cards=c;receipts=r;
+    const[c,r,sh]=await Promise.all([fetch('/api/cards').then(x=>x.json()),fetch('/api/receipts').then(x=>x.json()),fetch('/api/shipped').then(x=>x.json()).catch(()=>[])]);
+    cards=c;receipts=r;shipped=sh||[];
     if(!selected&&visible().length)selected=visible()[0].session;
     renderStats();renderList();renderReceipts();
+    $('n-shipped').textContent=shipped.length;
+    if(tab==='shipped')renderShipped();
     updateFavicon(cards.filter(x=>x.review!=='approved').length);
     if(tab==='insights')renderInsights();
     $('status').textContent='● live';$('status').style.color='var(--low)';

@@ -1129,3 +1129,19 @@ test("autopilot: trusted agent's low-risk sessions auto-approve; risky ones don'
   const tainted = [...cards.map((c) => ({ ...c })), mk("ap-bad", "high", "flagged", false)];
   assert.ok(!computeAgentTrust(tainted, cfg).get("claude-code")!.eligible, "flagged history disqualifies");
 });
+
+test("ship: classifies prod deploys/publishes/releases and pushes to main", async () => {
+  const { classifyShip } = await import("../ship.js");
+  assert.equal(classifyShip("vercel deploy --prod")!.kind, "deployed");
+  assert.equal(classifyShip("npm publish")!.kind, "published");
+  assert.equal(classifyShip("gh release create v1.2.0")!.kind, "released");
+  assert.equal(classifyShip("kubectl apply -f k8s/")!.detail, "Kubernetes");
+  const force = classifyShip("git push --force origin main")!;
+  assert.equal(force.kind, "force-pushed"); assert.equal(force.prod, true);
+  const toMain = classifyShip("git push origin main")!;
+  assert.equal(toMain.kind, "pushed"); assert.equal(toMain.prod, true);
+  const feature = classifyShip("git push origin my-feature")!;
+  assert.equal(feature.prod, false, "pushing a feature branch is not a prod ship");
+  assert.equal(classifyShip("npm test"), null, "non-ship command → null");
+  assert.equal(classifyShip("ls -la"), null);
+});

@@ -4,6 +4,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { buildCards } from "./cards.js";
 import { runAutopilot } from "./autopilot.js";
+import { buildShipped } from "./ship.js";
 import { buildTimeline } from "./timeline.js";
 import { readEvents, appendEvent } from "./journal.js";
 import { setReview, setDismissed } from "./reviews.js";
@@ -72,6 +73,8 @@ export function startServer(port = DEFAULT_PORT): http.Server {
         // rebuild so the response reflects the approvals (no-op unless enabled).
         runAutopilot(buildCards());
         send(200, JSON.stringify(buildCards()));
+      } else if (url.pathname === "/api/shipped") {
+        send(200, JSON.stringify(buildShipped()));
       } else if (url.pathname === "/api/receipts") {
         send(200, JSON.stringify(receiptRows()));
       } else if (url.pathname === "/api/timeline") {

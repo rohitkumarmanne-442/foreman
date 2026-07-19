@@ -543,6 +543,21 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (cmd === "shipped") {
+    const { buildShipped } = await import("./ship.js");
+    const ships = buildShipped();
+    if (!ships.length) { console.log("Nothing shipped to prod yet — no deploys, publishes, releases, or pushes to main seen."); return; }
+    console.log(`🚀 Shipped to prod — ${ships.length} action(s), newest first:\n`);
+    for (const s of ships.slice(0, 40)) {
+      const flag = s.unreviewed ? "  ⚠ UNREVIEWED" : "";
+      console.log(`  ${s.kind.padEnd(13)} ${s.detail.padEnd(16)} ${s.repo.padEnd(20)} ${s.agent}${flag}`);
+      console.log(`     ${s.command}`);
+    }
+    const unrev = ships.filter((s) => s.unreviewed).length;
+    if (unrev) console.log(`\n⚠ ${unrev} of these reached prod without being approved. Review them:  foreman ui`);
+    return;
+  }
+
   if (cmd === "prove") {
     const { detectVerifyCommand, runProve } = await import("./prove.js");
     const session = arg("--session");
