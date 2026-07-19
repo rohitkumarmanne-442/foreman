@@ -356,9 +356,15 @@ The inbox has the same thing as a **📋 PR comment** button on every card. Appr
 
 ## AI Hotspots
 
-The Insights tab includes **🔥 AI Hotspots** — a ranked worklist of the files your agents touch most, ordered by what needs your eyes. Each file is a bar (length = edit volume, color = risk) tagged with **⚠ collision** (two agents, same file), **critical / risky**, how many agents touched it, and **● live** when it was just edited. Sort by *Needs attention*, *Most edited*, *Most recent*, or *Riskiest* — and click any row to jump straight to the session that changed it. It answers the only question that matters at a glance: *what do I review first?*
+The Insights tab includes **🔥 AI Hotspots** — a ranked worklist of the files your agents touch most, ordered by what needs your eyes. Each file is a bar (length = edit volume, color = risk) tagged with **⚠ collision** (two agents, same file), **critical / risky**, how many agents touched it, and **● live** when it was just edited. Sort by *Needs attention*, *Most edited*, *Most recent*, or *Riskiest* — and click any row to jump straight to the session that changed it. It answers the only question that matters at a glance: *what do I review first?* Each row also shows an **≈ token estimate** for the file.
 
 Nobody else has this view, because nobody else has the data: it's drawn entirely from your local journal.
+
+## Token usage
+
+The **🎟️ Tokens** tab shows how much your agents generated — **per session, per file, and overall** — across any window: 7 / 30 / 90 days, all-time, or a **custom date range**. Bars are liquid-glass, sized by volume and coloured by risk; click one to review that session.
+
+Honest by design: Foreman never sees your prompts, so this is estimated from the *output* your agents produced (edits, commands, replies at ~4 chars/token) — generated volume, not billed input/context. And it costs **zero tokens** to compute — it's all deterministic, from the journal you already have.
 
 ## Drive it like a product
 

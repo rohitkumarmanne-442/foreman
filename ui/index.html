@@ -285,6 +285,37 @@
   .hs-more{text-align:center;font-size:12px;padding:13px 0 2px}
   .hs-empty{display:flex;flex-direction:column;align-items:center;gap:13px;padding:54px 20px;text-align:center}
   .hs-empty .mascot{width:74px;opacity:.85}
+  /* ---- Tokens ---- */
+  #tokens{display:none;padding:26px 34px;overflow-y:auto}
+  #tokhead{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:14px}
+  .tok-range{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+  .tok-dates{display:flex;align-items:center;gap:6px;margin-left:6px}
+  .tok-kpis{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:20px}
+  .tok-kpi{flex:1;min-width:120px;padding:16px 18px;border:1px solid var(--line);border-radius:var(--radius-lg);background:var(--panel2);position:relative;overflow:hidden}
+  .tok-kpi b{display:block;font:800 26px var(--display);line-height:1;letter-spacing:-.5px}
+  .tok-kpi span{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.05em;margin-top:6px;display:block}
+  .tok-kpi.big{background:linear-gradient(135deg,rgba(125,139,255,.16),rgba(125,139,255,.03));border-color:rgba(125,139,255,.32)}
+  .tok-kpi.big b{color:var(--accent);font-size:30px}
+  .tok-bars{display:flex;flex-direction:column;gap:8px}
+  .tok-row{display:grid;grid-template-columns:minmax(190px,32%) 1fr;align-items:center;gap:16px;padding:6px 8px;border-radius:11px;cursor:pointer;transition:background .12s}
+  .tok-row:hover{background:var(--sel)}
+  .tok-name{min-width:0;display:flex;align-items:center;gap:9px}
+  .tok-name .fn{font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .tok-track{height:30px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;overflow:visible;position:relative}
+  /* liquid glass bar */
+  .tok-fill{height:100%;border-radius:10px;display:flex;align-items:center;justify-content:flex-end;padding-right:11px;min-width:46px;position:relative;overflow:hidden;
+    background:color-mix(in srgb, var(--c) 40%, transparent);
+    border:1px solid color-mix(in srgb, var(--c) 62%, transparent);
+    -webkit-backdrop-filter:blur(8px) saturate(1.4);backdrop-filter:blur(8px) saturate(1.4);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.30), inset 0 -8px 14px rgba(0,0,0,.20), 0 4px 14px color-mix(in srgb, var(--c) 30%, transparent);
+    transition:width .35s cubic-bezier(.22,1,.36,1)}
+  .tok-fill::before{content:'';position:absolute;inset:0;border-radius:10px;pointer-events:none;
+    background:linear-gradient(118deg,rgba(255,255,255,.34),rgba(255,255,255,.06) 32%,transparent 58%)}
+  .tok-fill::after{content:'';position:absolute;left:0;right:0;top:0;height:45%;border-radius:10px 10px 0 0;pointer-events:none;
+    background:linear-gradient(180deg,rgba(255,255,255,.16),transparent)}
+  .tok-fill span{position:relative;font-size:12px;font-weight:700;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.55)}
+  @media (prefers-color-scheme:light){.tok-fill span{color:#0b1020;text-shadow:0 1px 2px rgba(255,255,255,.5)}}
+  :root[data-theme=light] .tok-fill span{color:#0b1020;text-shadow:0 1px 2px rgba(255,255,255,.5)}
   .chartrow{display:grid;grid-template-columns:2.2fr 1fr;gap:14px;margin-bottom:26px}
   @media(max-width:1100px){.chartrow{grid-template-columns:1fr}}
   .chartcard{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius-lg);padding:18px 20px}
@@ -482,6 +513,10 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 19V5M4 19h16M8 16l3-4 3 2 4-6" stroke-linecap="round" stroke-linejoin="round"/></svg>
       Insights
     </div>
+    <div class="nav" id="tab-tokens" onclick="showTab('tokens')" title="Estimated token usage by your agents">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="8" cy="9" r="5"/><path d="M14.5 5.2A5 5 0 0 1 14.5 18.8M11 15a5 5 0 0 0 6.5 3.8" stroke-linecap="round"/></svg>
+      Tokens
+    </div>
     <div class="nav" id="tab-uses" onclick="toggleUses()" title="Everything Foreman can do (u)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M13 3L4 14h7l-1 7 9-11h-7l1-7z" stroke-linejoin="round"/></svg>
       Use cases
@@ -515,6 +550,7 @@
   <div id="insbody"></div>
   <div id="hotspots"></div>
   </div>
+  <div id="tokens"></div>
 </main>
 <footer>
   <span id="status">connecting…</span><span>auto-refresh 3s</span><span>127.0.0.1 only — your data never leaves this machine</span>
@@ -753,14 +789,17 @@ function showTab(t){tab=t;
   $('tab-receipts').classList.toggle('active',t==='receipts');
   $('tab-shipped').classList.toggle('active',t==='shipped');
   $('tab-insights').classList.toggle('active',t==='insights');
+  $('tab-tokens').classList.toggle('active',t==='tokens');
   $('listwrap').style.display=t==='inbox'?'flex':'none';
   $('resizer').style.display=t==='inbox'?'block':'none';
   $('detail').style.display=t==='inbox'?'block':'none';
   $('receipts').style.display=t==='receipts'?'block':'none';
   $('shipped').style.display=t==='shipped'?'block':'none';
   $('insights').style.display=t==='insights'?'block':'none';
+  $('tokens').style.display=t==='tokens'?'block':'none';
   if(t==='shipped')renderShipped();
   if(t==='insights'){renderInsights();renderHotspots();}
+  if(t==='tokens')renderTokens();
 }
 
 // ── AI Hotspots: a ranked, actionable worklist of the files agents touch most ──
@@ -783,8 +822,8 @@ function fileAggregates(){
   const byPath=new Map();
   for(const c of set)for(const f of c.files){
     let a=byPath.get(f.path);
-    if(!a){const segs=f.path.split(/[\\/]/);a={path:f.path,base:segs.pop()||f.path,dir:segs.length?segs[segs.length-1]:'',touches:0,sessions:[],sev:severityFor(f.path,set),last:''};byPath.set(f.path,a);}
-    a.touches+=f.touches||1;
+    if(!a){const segs=f.path.split(/[\\/]/);a={path:f.path,base:segs.pop()||f.path,dir:segs.length?segs[segs.length-1]:'',touches:0,tok:0,sessions:[],sev:severityFor(f.path,set),last:''};byPath.set(f.path,a);}
+    a.touches+=f.touches||1;a.tok+=fileTok(f);
     if(!a.sessions.includes(c))a.sessions.push(c);
     if((f.last_ts||'')>a.last)a.last=f.last_ts||a.last;
   }
@@ -831,7 +870,7 @@ function renderHotspots(){
       <span class="hs-dot" style="background:${HS_COL(a)}"></span>
       <div class="hs-name"><span class="fn">${esc(a.base)}</span>${a.dir?`<span class="dim" style="font-size:11px">${esc(a.dir)}/</span>`:''}</div>
       <div class="hs-track"><div class="hs-fill" style="width:${w}%;background:${HS_COL(a)}"><span>${a.touches}</span></div></div>
-      <div class="hs-meta">${tags.join('')}<span class="dim">${a.last?ago(a.last):''}</span><button class="btn" onclick="event.stopPropagation();reviewFile('${esc(a.path)}')">Review →</button></div>
+      <div class="hs-meta">${tags.join('')}${a.tok?`<span class="hs-tag" title="estimated tokens generated for this file">≈${fmtTok(a.tok)} tok</span>`:''}<span class="dim">${a.last?ago(a.last):''}</span><button class="btn" onclick="event.stopPropagation();reviewFile('${esc(a.path)}')">Review →</button></div>
     </div>`;
   }).join('');
   el.innerHTML=`
@@ -847,6 +886,56 @@ function renderHotspots(){
   <div class="hs-sort">${chip('attention','⚡ Needs attention')}${chip('edits','Most edited')}${chip('recent','Most recent')}${chip('risk','Riskiest')}</div>
   ${shown.length?`<div class="hs-list">${rows}</div>`:`<div class="hs-empty"><img class="mascot" src="/mascot.png" onerror="this.remove()"><div>No AI file activity in this range yet.<br><span class="dim">Run <span class="mono">foreman start</span> and every edit lands here, ranked by what needs your eyes.</span></div></div>`}
   ${hidden>0?`<div class="hs-more dim">+${hidden} more file(s) beyond the top ${CAP}. Narrow the date range or change the sort to focus.</div>`:''}`;
+}
+
+// ── Tokens: estimated token usage by your agents (custom date range) ──
+let tokRange=localStorage.getItem('foreman_tok_range')||'30';
+let tokFrom=localStorage.getItem('tok_from')||'',tokTo=localStorage.getItem('tok_to')||'';
+function estTok(s){return s?Math.ceil(s.length/4):0;}
+function fileTok(f){
+  if(f.action==='write')return Math.max(estTok(f.after_sample),(f.lines_after||0)*9);
+  let t=0;for(const e of (f.edits||[]))t+=estTok(e.new);
+  if(!t&&f.lines_delta)t=Math.abs(f.lines_delta)*9;
+  return t;
+}
+function cardTok(c){let t=0;for(const f of c.files)t+=fileTok(f);for(const k of c.commands)t+=estTok(k.command);if(c.last_message)t+=estTok(c.last_message);return t;}
+function fmtTok(n){n=Math.round(n);if(n<1000)return ''+n;if(n<1e6)return (n/1000).toFixed(n<1e4?1:0)+'k';return (n/1e6).toFixed(2)+'M';}
+function setTokRange(r){tokRange=r;localStorage.setItem('foreman_tok_range',r);renderTokens();}
+function setTokDates(){tokFrom=$('tk_from').value;tokTo=$('tk_to').value;localStorage.setItem('tok_from',tokFrom);localStorage.setItem('tok_to',tokTo);tokRange='custom';localStorage.setItem('foreman_tok_range','custom');renderTokens();}
+function tokSpan(){const now=Date.now();if(tokRange==='custom')return[tokFrom?+new Date(tokFrom):0,tokTo?+new Date(tokTo)+86399999:now];if(tokRange==='all')return[0,now];const d=+tokRange||30;return[now-d*86400000,now];}
+function tokFilter(arr){const[f,t]=tokSpan();return arr.filter(c=>{const x=+new Date(c.started);return x>=f&&x<=t;});}
+function renderTokens(){
+  const el=$('tokens');if(!el)return;
+  const real=cards.filter(c=>!c.session.startsWith('demo-'));
+  const set=tokFilter(real.length?real:cards);
+  const rows=set.map(c=>({c,tok:cardTok(c)})).filter(r=>r.tok>0).sort((a,b)=>b.tok-a.tok);
+  const total=rows.reduce((n,r)=>n+r.tok,0);
+  const edits=set.reduce((n,c)=>n+c.files.reduce((m,f)=>m+(f.touches||1),0),0);
+  const maxT=Math.max(1,...rows.map(r=>r.tok));
+  const CAP=25,shown=rows.slice(0,CAP),hidden=rows.length-shown.length;
+  const rchip=(r,l)=>`<div class="chip ${tokRange===r?'active':''}" onclick="setTokRange('${r}')">${l}</div>`;
+  const col=c=>c.level==='critical'?'#ff5468':c.level==='high'?'#ffa14a':c.level==='medium'?'#e0b23c':'#5b7bd6';
+  el.innerHTML=`
+  <div id="tokhead">
+    <div style="flex:1;min-width:220px"><h3 style="margin:0">🎟️ Token usage <span class="dim" style="font-weight:400;font-size:13px">· estimated</span></h3>
+      <div class="sub" style="margin:3px 0 0">estimated from the text your agents generated — edits, commands, replies — at ~4 chars/token. Foreman never sees your prompts, so this is generated output, not billed input/context.</div></div>
+  </div>
+  <div class="tok-range">${rchip('7','7d')}${rchip('30','30d')}${rchip('90','90d')}${rchip('all','All')}${rchip('custom','Custom')}
+    <span class="tok-dates"><input type="date" class="dtin" id="tk_from" value="${tokFrom}" onchange="setTokDates()" title="from"><span class="dim">→</span><input type="date" class="dtin" id="tk_to" value="${tokTo}" onchange="setTokDates()" title="to"></span>
+  </div>
+  <div class="tok-kpis">
+    <div class="tok-kpi big"><b>${fmtTok(total)}</b><span>est. tokens</span></div>
+    <div class="tok-kpi"><b>${set.length}</b><span>sessions</span></div>
+    <div class="tok-kpi"><b>${edits}</b><span>edits tracked</span></div>
+    <div class="tok-kpi"><b>${fmtTok(edits?total/edits:0)}</b><span>avg / edit</span></div>
+  </div>
+  ${shown.length?`<div class="tok-bars">${shown.map(r=>{
+    const w=Math.max(4,Math.round(r.tok/maxT*100)),c=r.c;
+    return `<div class="tok-row" onclick="showTab('inbox');select('${esc(c.session)}')" title="${esc(c.cwd)}">
+      <div class="tok-name"><span class="badge b-${c.level}">${c.level} ${c.score}</span><span class="fn">${esc(base(c.cwd))}</span><span class="dim" style="font-size:11px;white-space:nowrap">${esc(AGENT_LABEL[c.agent]||c.agent)} · ${ago(c.last_activity||c.started)}</span></div>
+      <div class="tok-track"><div class="tok-fill" style="width:${w}%;--c:${col(c)}"><span>${fmtTok(r.tok)}</span></div></div>
+    </div>`;}).join('')}</div>${hidden>0?`<div class="hs-more dim">+${hidden} more session(s) in this window.</div>`:''}`
+  :`<div class="hs-empty"><img class="mascot" src="/mascot.png" onerror="this.remove()"><div>No token activity in this window.<br><span class="dim">Widen the date range, or run <span class="mono">foreman start</span> and let your agents work.</span></div></div>`}`;
 }
 
 // ── resizable / collapsible sidebar ────────────────────────────────
@@ -1649,6 +1738,7 @@ async function refresh(){
     if(tab==='shipped')renderShipped();
     updateFavicon(cards.filter(x=>x.review!=='approved').length);
     if(tab==='insights'){renderInsights();renderHotspots();}
+    if(tab==='tokens')renderTokens();
     $('status').textContent='● live';$('status').style.color='var(--low)';
     if(!tourAutoChecked&&cards.length){
       tourAutoChecked=true;
