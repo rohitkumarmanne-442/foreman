@@ -55,10 +55,39 @@ export interface ReceiptBody {
   prev?: string;
 }
 
-export function signReceipt(body: ReceiptBody): { sig: string; pk: string } {
+/** Sign any JSON-serialisable payload with the local ed25519 key (canonical form). */
+export function signPayload(payload: unknown): { sig: string; pk: string } {
   const { privateKey, publicKeyB64 } = loadOrCreateKeys();
-  const sig = crypto.sign(null, Buffer.from(canonical(body), "utf8"), privateKey).toString("base64");
+  const sig = crypto.sign(null, Buffer.from(canonical(payload), "utf8"), privateKey).toString("base64");
   return { sig, pk: publicKeyB64 };
+}
+
+/** Verify an ed25519 signature over any canonical payload against an SPKI-DER public key. */
+export function verifyPayload(payload: unknown, sigB64: string, pkB64: string): boolean {
+  try {
+    const publicKey = crypto.createPublicKey({
+      key: Buffer.from(pkB64, "base64"),
+      format: "der",
+      type: "spki",
+    });
+    return crypto.verify(
+      null,
+      Buffer.from(canonical(payload), "utf8"),
+      publicKey,
+      Buffer.from(sigB64, "base64")
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** A short, stable identity for a public key — shown as "signed by ed25519:…". */
+export function keyFingerprint(pkB64: string): string {
+  return "ed25519:" + sha256(pkB64).slice(0, 16);
+}
+
+export function signReceipt(body: ReceiptBody): { sig: string; pk: string } {
+  return signPayload(body);
 }
 
 /** The chain hash of a signed receipt: covers body AND signature. */
@@ -113,19 +142,5 @@ export function readChainHead(): string {
 }
 
 export function verifyReceipt(body: ReceiptBody, sigB64: string, pkB64: string): boolean {
-  try {
-    const publicKey = crypto.createPublicKey({
-      key: Buffer.from(pkB64, "base64"),
-      format: "der",
-      type: "spki",
-    });
-    return crypto.verify(
-      null,
-      Buffer.from(canonical(body), "utf8"),
-      publicKey,
-      Buffer.from(sigB64, "base64")
-    );
-  } catch {
-    return false;
-  }
+  return verifyPayload(body, sigB64, pkB64);
 }

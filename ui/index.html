@@ -666,6 +666,12 @@ async function copyPrComment(session){
   toast('📋 Evidence comment copied — paste it on your PR (or use: foreman pr)');
 }
 function copyCmd(text,btn){navigator.clipboard.writeText(text).then(()=>{toast('Copied: '+text);if(btn)btn.textContent='copied!';setTimeout(()=>{if(btn)btn.textContent='copy'},1500);});}
+function downloadManifest(session){
+  const a=document.createElement('a');
+  a.href='/api/manifest?session='+encodeURIComponent(session)+'&download=1';
+  a.download='';document.body.appendChild(a);a.click();a.remove();
+  toast('⬇ Signed provenance manifest downloaded — attach it to the PR/release. Verify: foreman verify-manifest');
+}
 let lastDismiss=null;
 async function dismissFinding(session,rule,undo=false){
   await fetch('/api/dismiss',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({session,rule,undo})});
@@ -1191,6 +1197,7 @@ function renderDetail(){
       <button class="btn approve ${c.review==='approved'?'active':''}" onclick="review('${esc(c.session)}','${c.review==='approved'?'pending':'approved'}')">✓ ${c.review==='approved'?'Approved':'Approve'}</button>
       <button class="btn flag ${c.review==='flagged'?'active':''}" onclick="${c.review==='flagged'?`review('${esc(c.session)}','pending')`:`openFlag('${esc(c.session)}')`}">⚑ ${c.review==='flagged'?'Flagged':'Flag'}</button>
       <button class="btn" onclick="copyPrComment('${esc(c.session)}')" title="Markdown evidence comment for your PR">📋 PR comment</button>
+      <button class="btn" onclick="downloadManifest('${esc(c.session)}')" title="Signed, tamper-evident provenance manifest (ed25519) — attach to a PR or release; verify offline with foreman verify-manifest">🔏 Signed manifest</button>
       <button class="btn" onclick="copyInvestigate('${esc(c.session)}')" title="Copy a ready-made investigation prompt — paste it into Claude Code or any agent">🔍 Investigate</button>
       <span class="kbd-hint"><kbd>a</kbd> / <kbd>f</kbd></span>
     </div>
@@ -1425,7 +1432,8 @@ function palActions(){
   if(cur)a.push(
     {ico:'✓',label:`Approve <b>${esc(base(cur.cwd))}</b>`,hint:'a',run:()=>review(cur.session,'approved')},
     {ico:'⚑',label:`Flag <b>${esc(base(cur.cwd))}</b> with a note`,hint:'f',run:()=>openFlag(cur.session)},
-    {ico:'📋',label:'Copy PR evidence comment',run:()=>copyPrComment(cur.session)});
+    {ico:'📋',label:'Copy PR evidence comment',run:()=>copyPrComment(cur.session)},
+    {ico:'🔏',label:'Download signed provenance manifest',run:()=>downloadManifest(cur.session)});
   if(pending.length>1)a.push({ico:'✓✓',label:`Approve all visible (<b>${pending.length}</b> sessions)`,run:async()=>{for(const c of pending)await fetch('/api/review',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({session:c.session,status:'approved'})});toast(`✓ Approved ${pending.length} sessions`);refresh();}});
   a.push(
     {ico:'📥',label:'Go to Inbox',run:()=>showTab('inbox')},

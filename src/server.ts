@@ -5,6 +5,7 @@ import { spawn } from "node:child_process";
 import { buildCards } from "./cards.js";
 import { runAutopilot } from "./autopilot.js";
 import { buildShipped } from "./ship.js";
+import { buildManifest } from "./manifest.js";
 import { buildTimeline } from "./timeline.js";
 import { readEvents, appendEvent } from "./journal.js";
 import { setReview, setDismissed } from "./reviews.js";
@@ -75,6 +76,23 @@ export function startServer(port = DEFAULT_PORT): http.Server {
         send(200, JSON.stringify(buildCards()));
       } else if (url.pathname === "/api/shipped") {
         send(200, JSON.stringify(buildShipped()));
+      } else if (url.pathname === "/api/manifest") {
+        const session = url.searchParams.get("session") ?? "";
+        try {
+          const man = buildManifest(session);
+          const json = JSON.stringify(man, null, 2);
+          const dl = url.searchParams.get("download") === "1";
+          const repo = man.payload.repo.replace(/[^\w.-]+/g, "-") || "session";
+          res.writeHead(200, {
+            "content-type": "application/json; charset=utf-8",
+            "cache-control": "no-store",
+            "access-control-allow-origin": "http://127.0.0.1:" + port,
+            ...(dl ? { "content-disposition": `attachment; filename="foreman-${repo}.manifest.json"` } : {}),
+          });
+          res.end(json);
+        } catch (e) {
+          send(404, JSON.stringify({ error: String(e instanceof Error ? e.message : e) }));
+        }
       } else if (url.pathname === "/api/receipts") {
         send(200, JSON.stringify(receiptRows()));
       } else if (url.pathname === "/api/timeline") {

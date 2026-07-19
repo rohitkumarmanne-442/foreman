@@ -1145,3 +1145,39 @@ test("ship: classifies prod deploys/publishes/releases and pushes to main", asyn
   assert.equal(classifyShip("npm test"), null, "non-ship command → null");
   assert.equal(classifyShip("ls -la"), null);
 });
+
+test("manifest: ed25519 sign/verify round-trip, tamper detection, fingerprint", async () => {
+  const { signPayload, verifyPayload, keyFingerprint, sha256, canonical } = await import("../mcp/receipts.js");
+  const { verifyManifest } = await import("../manifest.js");
+
+  // crypto primitives round-trip and reject any mutation
+  const payload = { session: "s1", risk: { level: "critical", score: 90 }, files: ["a", "b"] };
+  const { sig, pk } = signPayload(payload);
+  assert.equal(verifyPayload(payload, sig, pk), true, "signature verifies over the exact payload");
+  assert.equal(verifyPayload({ ...payload, risk: { level: "low", score: 0 } }, sig, pk), false, "downgraded risk fails verification");
+  assert.match(keyFingerprint(pk), /^ed25519:[0-9a-f]{16}$/, "stable key fingerprint format");
+  assert.equal(keyFingerprint(pk), keyFingerprint(pk), "fingerprint is deterministic");
+
+  // a full manifest envelope verifies, and each tamper vector is caught
+  const good = {
+    foreman_manifest: "1",
+    payload,
+    content_hash: sha256(canonical(payload)),
+    signature: { alg: "ed25519", sig, pk, key_fingerprint: keyFingerprint(pk) },
+  };
+  assert.equal(verifyManifest(good).ok, true, "well-formed manifest is valid");
+
+  const alteredPayload = { ...good, payload: { ...payload, risk: { level: "low", score: 0 } } };
+  const a = verifyManifest(alteredPayload);
+  assert.equal(a.ok, false, "altering the payload invalidates the manifest");
+  assert.equal(a.signature_valid, false, "signature no longer matches");
+  assert.equal(a.content_hash_valid, false, "content hash no longer matches");
+
+  const forgedHash = { ...good, content_hash: "0".repeat(64) };
+  assert.equal(verifyManifest(forgedHash).content_hash_valid, false, "wrong content_hash is caught");
+
+  const forgedFp = { ...good, signature: { ...good.signature, key_fingerprint: "ed25519:deadbeefdeadbeef" } };
+  assert.equal(verifyManifest(forgedFp).fingerprint_valid, false, "fingerprint that doesn't match the key is caught");
+
+  assert.equal(verifyManifest({ hello: "world" }).ok, false, "non-manifest JSON is rejected");
+});

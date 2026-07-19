@@ -43,6 +43,11 @@ const HELP = `
     foreman gate [--level high]  exit 1 if unapproved risky sessions exist — for CI/pre-push
     foreman pr [--session id] [--pr N] [--print]
                                  post a session-evidence comment on the PR (gh), or --print it
+    foreman manifest [--session id] [-o foreman.manifest.json]
+                                 signed provenance manifest for a PR/release (ed25519) —
+                                 who did it, what changed, was it verified + approved
+    foreman verify-manifest <file>
+                                 verify a manifest offline — tamper-evident, no network
     foreman tray                 system-tray inbox with critical-card balloons (Windows)
     foreman ingest               journal normalized JSON events from ANY tool (stdin)
 
@@ -555,6 +560,63 @@ async function main(): Promise<void> {
     }
     const unrev = ships.filter((s) => s.unreviewed).length;
     if (unrev) console.log(`\n⚠ ${unrev} of these reached prod without being approved. Review them:  foreman ui`);
+    return;
+  }
+
+  if (cmd === "manifest") {
+    const { buildManifest } = await import("./manifest.js");
+    const sessionArg = arg("--session") ?? (process.argv[3] && !process.argv[3].startsWith("--") ? process.argv[3] : undefined);
+    let session: string;
+    if (sessionArg) {
+      const c = buildCards().find((x) => x.session === sessionArg || x.session.startsWith(sessionArg));
+      if (!c) { console.error(`No session matching "${sessionArg}". List them:  foreman status`); process.exit(1); }
+      session = c.session;
+    } else {
+      const { sameRepo } = await import("./feedback.js");
+      const repo = arg("--repo") ?? process.cwd();
+      const c = buildCards()
+        .filter((x) => !x.session.startsWith("demo-") && sameRepo(x.cwd, repo))
+        .sort((a, b) => b.started.localeCompare(a.started))[0];
+      if (!c) { console.error(`No session found for ${repo}. Run your agent first, or pass --session <id>.`); process.exit(1); }
+      session = c.session;
+    }
+    const man = buildManifest(session);
+    const json = JSON.stringify(man, null, 2);
+    const out = arg("--out") ?? arg("-o");
+    if (out) {
+      fs.writeFileSync(out, json + "\n", "utf8");
+      console.log(`✅ Signed provenance manifest → ${out}`);
+      console.log(`   session ${man.payload.session.slice(0, 12)} · ${man.payload.risk.level.toUpperCase()} ${man.payload.risk.score} · review: ${man.payload.review.status} · ${man.signature.key_fingerprint}`);
+      console.log(`   Attach it to your PR or release. Anyone can verify it offline:`);
+      console.log(`     foreman verify-manifest ${out}`);
+    } else {
+      console.log(json);
+    }
+    return;
+  }
+
+  if (cmd === "verify-manifest") {
+    const { verifyManifest } = await import("./manifest.js");
+    const file = process.argv[3] && !process.argv[3].startsWith("--") ? process.argv[3] : arg("--file");
+    if (!file) { console.error("usage: foreman verify-manifest <foreman.manifest.json>"); process.exit(1); }
+    let man: unknown;
+    try { man = JSON.parse(fs.readFileSync(file, "utf8")); }
+    catch (e) { console.error(`Could not read/parse ${file}: ${e instanceof Error ? e.message : e}`); process.exit(1); }
+    const v = verifyManifest(man);
+    const p = (man as { payload?: Record<string, any> })?.payload ?? {};
+    console.log(v.ok
+      ? `✅ VALID — signature, content hash, and key fingerprint all check out.`
+      : `❌ INVALID manifest:${v.reasons.map((r) => `\n   · ${r}`).join("")}`);
+    console.log(`   signature ${v.signature_valid ? "✓" : "✗"}   content-hash ${v.content_hash_valid ? "✓" : "✗"}   fingerprint ${v.fingerprint_valid ? "✓" : "✗"}`);
+    if (p.session) {
+      console.log(`\n   Signed by      ${v.key_fingerprint}`);
+      console.log(`   Agent          ${p.agent} · ${p.repo}`);
+      console.log(`   Session        ${String(p.session).slice(0, 12)} · generated ${p.generated_at}`);
+      console.log(`   Risk / review  ${String(p.risk?.level).toUpperCase()} ${p.risk?.score} · ${p.review?.status} (${p.review?.decided_by})`);
+      console.log(`   Claims         ${p.verification?.claims_verified ? "verified" : "UNVERIFIED"} · ${p.verification?.verification_passing}/${p.verification?.verification_commands} checks passing`);
+      if (Array.isArray(p.shipped) && p.shipped.length) console.log(`   Shipped        ${p.shipped.map((s: any) => `${s.kind}→${s.detail}`).join(", ")}`);
+    }
+    if (!v.ok) process.exit(1);
     return;
   }
 
